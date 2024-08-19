@@ -85,7 +85,6 @@ class MPCController:
         )
 
         omega_dot = mtimes(inv(I), mtimes(T_matrix, controls) - mtimes([omega_tilde,I,omegas]))
-
         omega1_dot = omega_dot[0]
         omega2_dot = omega_dot[1]
         omega3_dot = omega_dot[2]
@@ -139,7 +138,7 @@ class MPCController:
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
             J += mtimes([x_delta.T, Q, x_delta])
             J += mtimes([U_k.T, R, U_k])
-            J += rho * norm_2(xi_obstacle[k])
+            J += rho * norm_1(xi_obstacle[k])
             
             X = X_next
         

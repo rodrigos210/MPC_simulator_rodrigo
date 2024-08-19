@@ -89,7 +89,6 @@ class MPCController:
         
         dynamics = vertcat(x_dot, y_dot, z_dot, x_ddot, y_ddot, z_ddot, q0_dot, q1_dot, q2_dot, q3_dot, omega1_dot, omega2_dot, omega3_dot)
 
-
         # Initial and Target State 
         x_ref = MX.sym('x_ref', 13)
         x0 = MX.sym('x0', 13)
@@ -97,10 +96,16 @@ class MPCController:
         # Continuous Dynamics Function
         f = Function('f', [states, controls], [dynamics])
         ## Discretization 
+        # RK4
+        k1 = f(states, controls)
+        k2 = f(states + 0.5 * dt * k1, controls)
+        k3 = f(states + 0.5 * dt * k2, controls)
+        k4 = f(states + dt * k3, controls)
+        F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
 
-        # Euler Forward
-        next_state = states + dt * f(states, controls)
-        F = Function('F', [states, controls], [next_state])
+        # # Euler Forward
+        # next_state = states + dt * f(states, controls)
+        # F = Function('F', [states, controls], [next_state])
 
         next_quaternions2 = mtimes(cos(0.5 * norm_2(omegas)) * MX.eye(4) + (0.1 * norm_2(omegas))*sin(0.5*norm_2(omegas))*Omega, quat)
         F_quat = Function('F_quat', [states, controls], [next_quaternions2])        

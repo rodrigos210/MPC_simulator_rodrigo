@@ -32,7 +32,7 @@ MPC_freq = 1
 
 # Simulation parameters
 simulation_time = 300  # Total simulation time in seconds
-dt_sim = 1  # Time step
+dt_sim = 10  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13)
 x0 [0:3] = [0.5, 0.5, 0.01]
@@ -110,14 +110,12 @@ def main():
         u_guess = np.tile(u, (c_horizon, 1)).reshape(c_horizon * 8, 1)
         states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
         
-    
     # Plotting
     time = np.linspace(0, simulation_time, num_steps + 1)
     x_ref_evolution = []
     
     for t in range(num_steps):
         x_ref_evolution.append(target_dynamics(t))
-
 
     plt.figure(figsize=(12, 8))
 
@@ -152,7 +150,6 @@ def main():
 
     plt.tight_layout()
 
-
     # Plot cost history
     plt.figure(figsize=(12, 8))
     time_cost = np.linspace(0, simulation_time - dt_sim, len(cost_evolution))
@@ -170,7 +167,6 @@ def main():
     plt.ylabel('Cost')
     plt.title('Slack Variable Evolution')
     plt.grid()
-
 
     # Plot trajectory
     
@@ -197,68 +193,6 @@ def main():
     plt.ylabel('quaternions')
     plt.grid()
     plt.show() 
-
-# def animate_trajectory(states, simulation_time, dt_sim):
-#     # Create a figure and axis
-#     fig, ax = plt.subplots(figsize=(8, 6))
-    
-#     # Set up plot limits
-#     ax.set_xlim(np.min(states[:, 0]) - 10, np.max(states[:, 0]) + 10)
-#     ax.set_ylim(np.min(states[:, 2]) - 10, np.max(states[:, 2]) + 10)
-    
-#     # Plot the reference trajectory
-#     ax.plot(states[:, 0], states[:, 2], 'r--', label='Reference Trajectory')
-    
-#     # Initialize a line for the trajectory and a point for the current position
-#     line, = ax.plot([], [], 'b-', label='Trajectory')
-#     point, = ax.plot([], [], 'bo', label='Current Position')
-    
-#     # Initialize an empty list for the arrows
-#     arrows = []
-
-#     def init():
-#         line.set_data([], [])
-#         point.set_data([], [])
-#         return line, point
-    
-#     def update(frame):
-#         nonlocal arrows
-        
-#         # Clear previous arrows
-#         for arrow in arrows:
-#             arrow.remove()
-#         arrows = []
-        
-#         # Update the trajectory line
-#         line.set_data(states[:frame, 0], states[:frame, 2])
-        
-#         # Update the current position point
-#         point.set_data(states[frame, 0], states[frame, 2])
-        
-#         # Update the arrow to represent orientation
-#         x, y = states[frame, 0], states[frame, 2]
-#         theta = states[frame, 4]
-#         dx = np.cos(theta)
-#         dy = np.sin(theta)
-        
-#         # Add a new arrow to the plot
-#         arrow = ax.arrow(x, y, dx * 5, dy * 5, head_width=2, head_length=2, fc='g', ec='g')
-#         arrows.append(arrow)
-        
-#         return line, point, *arrows
-    
-#     # Time array
-#     time = np.linspace(0, simulation_time, int(simulation_time/dt_sim) + 1)
-    
-#     # Create the animation
-#     anim = FuncAnimation(fig, update, frames=len(time), init_func=init, blit=True, interval=dt_sim*1000, repeat=False)
-    
-#     # Show the animation
-#     plt.xlabel('x')
-#     plt.ylabel('y')
-#     plt.legend()
-#     plt.grid()
-#     plt.show()
 
 if __name__ == "__main__":
     main()
