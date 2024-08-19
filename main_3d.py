@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mpc_controller_3d import MPCController
-from dynamics_3d import rk4_step
+from src.controllers.mpc_controller_3d import MPCController
+from src.dynamics.dynamics_3d import rk4_step
+from src.util.eul2quat import euler_to_quaternion
+from src.util.quat2eul import quaternion_to_euler
 from matplotlib.animation import FuncAnimation
-from quat2eul import quaternion_to_euler
-from eul2quat import euler_to_quaternion
 
 
 # Constants

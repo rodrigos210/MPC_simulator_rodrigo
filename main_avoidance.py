@@ -1,10 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mpc_controller_avoidance import MPCController
-from dynamics_avoidance import rk4_step
+#from mpc_controller_avoidance import MPCController
+from src.controllers.mpc_controller_avoidance import MPCController
+from src.dynamics.dynamics_avoidance import rk4_step
+#from dynamics.dynamics_avoidance import rk4_step
 from matplotlib.animation import FuncAnimation
-from quat2eul import quaternion_to_euler
-from eul2quat import euler_to_quaternion
+from src.util.eul2quat import euler_to_quaternion
+from src.util.quat2eul import quaternion_to_euler
+#from quat2eul import quaternion_to_euler
+#from eul2quat import euler_to_quaternion
 
 
 # Constants

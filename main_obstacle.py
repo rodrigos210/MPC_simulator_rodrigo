@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mpc_controller_obstacle import MPCController
-from dynamics_avoidance import rk4_step
+from src.controllers.mpc_controller_obstacle import MPCController
+from src.dynamics.dynamics_avoidance import rk4_step
 from matplotlib.animation import FuncAnimation
-from quat2eul import quaternion_to_euler
-from eul2quat import euler_to_quaternion
+from src.util.quat2eul import quaternion_to_euler
+from src.util.eul2quat import euler_to_quaternion
 
 
 # Constants
@@ -19,15 +19,15 @@ u_max = 1
 
 
 # MPC Parameters
-dt_MPC = 10
+dt_MPC = 1
 T_horizon = 120
-c_horizon = 1
-Q = 10 * np.eye(13)   # State Weighting Matrix
+c_horizon = 2
+Q = 1 * np.eye(13) # State Weighting Matrix
 Q[6:10,:] = 0
-R = 1 * np.eye(8)                     # Control weighting matrix
-P = 10 * np.eye(13) # Terminal Cost Weighting Matrix
+R = 1 * np.eye(8)   # Control weighting matrix
+P = 1 * np.eye(13) # Terminal Cost Weighting Matrix
 P[6:10,:] = 0
-pho = 100
+pho = 1
 MPC_freq = 1
 
 # Simulation parameters
