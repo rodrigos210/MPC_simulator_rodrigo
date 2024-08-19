@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 #from mpc_controller_avoidance import MPCController
 from src.controllers.mpc_controller_avoidance import MPCController
-from src.dynamics.dynamics_avoidance import rk4_step
+from src.dynamics.dynamics_3d import rk4_step
 #from dynamics.dynamics_avoidance import rk4_step
 from matplotlib.animation import FuncAnimation
 from src.util.eul2quat import euler_to_quaternion

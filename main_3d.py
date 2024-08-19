@@ -5,7 +5,8 @@ from src.dynamics.dynamics_3d import rk4_step
 from src.util.eul2quat import euler_to_quaternion
 from src.util.quat2eul import quaternion_to_euler
 from matplotlib.animation import FuncAnimation
-
+import time
+start_time = time.time()
 
 # Constants
 mass = 1
@@ -17,13 +18,13 @@ u_min = 0
 u_max = 1
 
 # MPC Parameters
-dt_MPC = 10
-T_horizon = 120
-c_horizon = 4
-Q = 1 * np.eye(13)   # State Weighting Matrix
+dt_MPC = 1
+T_horizon = 12
+c_horizon = 3
+Q = 10 * np.eye(13)   # State Weighting Matrix
 #Q[6:10,:] = 0
 R = 1 * np.eye(8)                     # Control weighting matrix
-P = 1 * np.eye(13) # Terminal Cost Weighting Matrix
+P = 100 * np.eye(13) # Terminal Cost Weighting Matrix
 #P[6:10,:] = 0
 MPC_freq = 1
 
@@ -176,68 +177,7 @@ def main():
     plt.grid()
     plt.show() 
 
-# def animate_trajectory(states, simulation_time, dt_sim):
-#     # Create a figure and axis
-#     fig, ax = plt.subplots(figsize=(8, 6))
-    
-#     # Set up plot limits
-#     ax.set_xlim(np.min(states[:, 0]) - 10, np.max(states[:, 0]) + 10)
-#     ax.set_ylim(np.min(states[:, 2]) - 10, np.max(states[:, 2]) + 10)
-    
-#     # Plot the reference trajectory
-#     ax.plot(states[:, 0], states[:, 2], 'r--', label='Reference Trajectory')
-    
-#     # Initialize a line for the trajectory and a point for the current position
-#     line, = ax.plot([], [], 'b-', label='Trajectory')
-#     point, = ax.plot([], [], 'bo', label='Current Position')
-    
-#     # Initialize an empty list for the arrows
-#     arrows = []
-
-#     def init():
-#         line.set_data([], [])
-#         point.set_data([], [])
-#         return line, point
-    
-#     def update(frame):
-#         nonlocal arrows
-        
-#         # Clear previous arrows
-#         for arrow in arrows:
-#             arrow.remove()
-#         arrows = []
-        
-#         # Update the trajectory line
-#         line.set_data(states[:frame, 0], states[:frame, 2])
-        
-#         # Update the current position point
-#         point.set_data(states[frame, 0], states[frame, 2])
-        
-#         # Update the arrow to represent orientation
-#         x, y = states[frame, 0], states[frame, 2]
-#         theta = states[frame, 4]
-#         dx = np.cos(theta)
-#         dy = np.sin(theta)
-        
-#         # Add a new arrow to the plot
-#         arrow = ax.arrow(x, y, dx * 5, dy * 5, head_width=2, head_length=2, fc='g', ec='g')
-#         arrows.append(arrow)
-        
-#         return line, point, *arrows
-    
-#     # Time array
-#     time = np.linspace(0, simulation_time, int(simulation_time/dt_sim) + 1)
-    
-#     # Create the animation
-#     anim = FuncAnimation(fig, update, frames=len(time), init_func=init, blit=True, interval=dt_sim*1000, repeat=False)
-    
-#     # Show the animation
-#     plt.xlabel('x')
-#     plt.ylabel('y')
-#     plt.legend()
-#     plt.grid()
-#     plt.show()
-
 if __name__ == "__main__":
     main()
     # animate_trajectory(states, simulation_time, dt_sim)
+    print("Process finished --- %s seconds ---" % (time.time() - start_time))

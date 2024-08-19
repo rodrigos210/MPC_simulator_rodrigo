@@ -101,13 +101,13 @@ class MPCController:
         ## Discretization 
 
         # RK4 
-        k1 = f(states, controls)
-        k2 = f(states + 0.5 * dt * k1, controls)
-        k3 = f(states + 0.5 * dt * k2, controls)
-        k4 = f(states + dt * k3, controls)
-        F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
-        
-        # Euler Forward
+        # k1 = f(states, controls)
+        # k2 = f(states + 0.5 * dt * k1, controls)
+        # k3 = f(states + 0.5 * dt * k2, controls)
+        # k4 = f(states + dt * k3, controls)
+        # F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
+
+        # # Euler Forward
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
 
@@ -130,14 +130,16 @@ class MPCController:
             X_next = F(X, U_k) 
 
             X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10])
+            
+            pos_delta = X[0:3] - x_obstacle[0:3]
+            distance_to_obstacle = norm_2(pos_delta)
 
-            distance_to_obstacle = norm_2(X_next[:3]-x_obstacle)
-
-            obstacle_margin_constraint = distance_to_obstacle - radius_obstacle*2 + xi_obstacle[k]
+            obstacle_margin_constraint = distance_to_obstacle - radius_obstacle * 2 + xi_obstacle[k]
             obstacle_constraint = distance_to_obstacle - radius_obstacle
-            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # quaternions normalization
+
+            
+            g.append(obstacle_constraint)
             g.append(obstacle_margin_constraint)
-            #g.append(obstacle_constraint)
             
             pos_vel_delta = X[0:6] - x_ref[0:6]
             omega_delta = X[10:13] - x_ref[10:13]
@@ -146,7 +148,7 @@ class MPCController:
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
             J += mtimes([x_delta.T, Q, x_delta])
             J += mtimes([U_k.T, R, U_k])
-            J += rho * norm_1(xi_obstacle[k])
+            J += rho * xi_obstacle[k]**2
             
             X = X_next
         
@@ -158,17 +160,18 @@ class MPCController:
 
         # Solver Design
         nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
+        #nlp = {'x': reshape(U, -1, 1), 'f': J, 'g': vertcat(*g), 'p': p}
         #nlp = {'x': vertcat(reshape(U, -1, 1)), 'f': J, 'p': p}
-
-        opts = {
-            'ipopt.print_level': 0, 
-            'print_time': 0, 
-            'ipopt.sb': 'yes', 
-            'ipopt.max_iter': 500, 
-            'ipopt.tol': 1e-5,
-            'ipopt.acceptable_tol': 1e-4,
-            'ipopt.constr_viol_tol': 1e-3,
-        }
+        opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-6}
+        # opts = {
+        #     'ipopt.print_level': 0, 
+        #     'print_time': 0, 
+        #     'ipopt.sb': 'yes', 
+        #     'ipopt.max_iter': 500, 
+        #     'ipopt.tol': 1e-5,
+        #     'ipopt.acceptable_tol': 1e-4,
+        #     'ipopt.constr_viol_tol': 1e-3,
+        # }
 
 
         self.solver = nlpsol('solver', 'ipopt', nlp, opts)
@@ -180,23 +183,27 @@ class MPCController:
         xi_optimal = []
         # Initial guess and bounds for the solver
         lbx_u = np.tile([self.u_min]*self.m, self.c_horizon)
-        lbx_xi = [0] * self.p_horizon
         ubx_u = np.tile([self.u_max] * self.m, self.c_horizon)
+        lbx_xi = [0] * self.p_horizon
         ubx_xi = [float(inf)] * self.p_horizon
         arg = {}
         arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon)))
+        #arg["x0"] = u_guess.flatten()
         arg["lbx"] = np.concatenate((lbx_u,lbx_xi))
         arg["ubx"] = np.concatenate((ubx_u,ubx_xi))
-        #arg["lbg"] = [0.000001, 0.000001] * self.p_horizon  
-        arg["lbg"] = [0] * self.p_horizon
-        #arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon  
-        arg["ubg"] = [float('inf')] * self.p_horizon  
+        #arg["lbx"] = lbx_u
+        #arg["ubx"] = ubx_u
+        #arg["lbg"] = [0] * self.p_horizon  
+        arg["lbg"] = [0, 0] * self.p_horizon
+        #arg["ubg"] = [float('inf')] * self.p_horizon  
+        arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon  
         arg["p"] = np.concatenate((x0, x_ref))
         
         # Solve the problem
         res = self.solver(**arg)
         u_opt = res['x'].full().reshape(-1)[:self.c_horizon*self.m].reshape(self.c_horizon, self.m)
+        #u_opt = res['x'].full().reshape(self.c_horizon,self.m)
         xi_optimal.append(res['x'].full().reshape(-1)[self.c_horizon*self.m:])
         cost_iter.append(float(res["f"]))
 
-        return u_opt[0, :], xi_optimal, cost_iter
+        return u_opt, xi_optimal, cost_iter
