@@ -90,6 +90,12 @@ class MPCController:
         f = Function('f', [states, controls], [dynamics])
 
         ## Discretization 
+        # RK4 
+        k1 = f(states, controls)
+        k2 = f(states + 0.5 * dt * k1, controls)
+        k3 = f(states + 0.5 * dt * k2, controls)
+        k4 = f(states + dt * k3, controls)
+        F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
         # Euler Forward
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
