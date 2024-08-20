@@ -114,10 +114,10 @@ class MPCController:
         X = x0 # Initial State
         J = 0
         quat_A = vertcat(
-            horzcat(x_ref[0], x_ref[1], x_ref[2], x_ref[3]),
-            horzcat(-x_ref[1], x_ref[0], -x_ref[3], -x_ref[2]),
-            horzcat(-x_ref[2], -x_ref[3], x_ref[0], x_ref[1]),
-            horzcat(-x_ref[3], x_ref[2], -x_ref[1], x_ref[0])
+            horzcat(x_ref[6], x_ref[7], x_ref[8], x_ref[9]),
+            horzcat(-x_ref[7], x_ref[6], -x_ref[9], -x_ref[8]),
+            horzcat(-x_ref[8], -x_ref[9], x_ref[6], x_ref[7]),
+            horzcat(-x_ref[9], x_ref[8], -x_ref[7], x_ref[6])
         )
         for k in range(self.p_horizon):
             # U_k = U[:, min(k, c_horizon-1)]

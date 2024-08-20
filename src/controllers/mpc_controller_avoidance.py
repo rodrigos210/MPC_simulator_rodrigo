@@ -1,15 +1,13 @@
 from casadi import *
 
 class MPCController:
-    def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, apex, azimuth_bounds, elevation_bounds):
-        
+    def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, apex, cone_angle_rads, rho):
         self.p_horizon = p_horizon = int(time_horizon/dt)
         self.c_horizon = c_horizon
         self.u_min = u_min
         self.u_max = u_max
-        self.cone_apex = apex
-        self.azimuth_bounds = azimuth_bounds
-        self.elevation_bounds = elevation_bounds
+        self.apex = apex
+        self.cone_angle = cone_angle_rads # Convert to radians
 
         # States Variables Initialization
         x = MX.sym('x')
@@ -75,7 +73,14 @@ class MPCController:
         )
 
         omegas = vertcat(omega1, omega2, omega3)
-        omega_dot = mtimes(inv(I), mtimes(T_matrix, controls) - mtimes([omegas.T, I, omegas]))
+
+        omega_tilde = vertcat(
+            horzcat(0, -omega3, omega2),
+            horzcat(omega3, 0, -omega1),
+            horzcat(-omega2, omega1, 0)
+        )
+
+        omega_dot = mtimes(inv(I), mtimes(T_matrix, controls) - mtimes([omega_tilde,I,omegas]))
         omega1_dot = omega_dot[0]
         omega2_dot = omega_dot[1]
         omega3_dot = omega_dot[2]
@@ -85,97 +90,94 @@ class MPCController:
         # Initial and Target State 
         x_ref = MX.sym('x_ref', 13)
         x0 = MX.sym('x0', 13)
-
+        xi_entryangle = MX.sym('xi_obstacle', self.p_horizon)  # One slack variable for each time step
         # Continuous Dynamics Function
         f = Function('f', [states, controls], [dynamics])
 
-        ## Discretization 
-        # RK4 
-        k1 = f(states, controls)
-        k2 = f(states + 0.5 * dt * k1, controls)
-        k3 = f(states + 0.5 * dt * k2, controls)
-        k4 = f(states + dt * k3, controls)
-        F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
-        # Euler Forward
+        # Discretization (Euler or RK4)
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
 
+        # Initialization
         U = MX.sym('U', self.m, self.c_horizon)
-        X = x0 # Initial State
+        X = x0  # Initial State
         J = 0
-        g = []  # constraints list
-        r_threshold = 1
-        
+        g = []
+        threshold = 1
+
+        # Target Point for Cone
+        x_apex, y_apex, z_apex = self.apex
+        cone_cos = cos(self.cone_angle)  # Cosine of cone angle for constraint
+        quat_A = vertcat(
+            horzcat(x_ref[6], x_ref[7], x_ref[8], x_ref[9]),
+            horzcat(-x_ref[7], x_ref[6], -x_ref[9], -x_ref[8]),
+            horzcat(-x_ref[8], -x_ref[9], x_ref[6], x_ref[7]),
+            horzcat(-x_ref[9], x_ref[8], -x_ref[7], x_ref[6])
+        )
+
         for k in range(self.p_horizon):
             if k < c_horizon:
                 U_k = U[:, k]
             else:
                 U_k = U[:, c_horizon-1]
 
-            X_next = F(X, U_k) 
-            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10])
-            
-            distance_to_obstacle = sqrt(sum1((X_next[:3] - self.cone_apex)**2))
-            print('ANTIGO',distance_to_obstacle)
-            distance_to_obstacle = norm_2(X_next[:3]-self.cone_apex)
-            print('NOVO', distance_to_obstacle)
-            # Calculate the relative position vector
-            relative_position = X_next[:3] - self.cone_apex
-            
-            # Calculate azimuth angle (in radians)
-            azimuth_angle = atan2(relative_position[1], relative_position[0])
-            
-            # Calculate elevation angle (in radians)
-            elevation_angle = atan2(relative_position[2], sqrt(relative_position[0]**2 + relative_position[1]**2))
-            azimuth_constraint = if_else(distance_to_obstacle<r_threshold,azimuth_angle, 0)
-            # Add the azimuth angle constraint
-            g.append(azimuth_constraint)
-            # Add the elevation angle constraint
+            X_next = F(X, U_k)
+            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10])  # quaternions normalization
 
-            
-            #g.append(elevation_angle)
+            pos_vel_delta = X[0:6] - x_ref[0:6]
+            omega_delta = X[10:13] - x_ref[10:13]
 
-            x_delta = X - x_ref
+            quat_err = mtimes(quat_A, vertcat(X[6:10]))
+            x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
             J += mtimes([x_delta.T, Q, x_delta])
             J += mtimes([U_k.T, R, U_k])
+
+            pos_delta = X[0:3] - x_ref[0:3]
+            distance_to_target = norm_2(pos_delta)
+
             
+            # Enforce Cone Constraint Near End
+
+            v = vertcat(x_apex - X[0], y_apex - X[1], z_apex - X[2])
+            v_norm = norm_2(v)
+            cos_theta = (v[0] / v_norm)  # Dot product with x-axis direction
+            g.append(if_else(distance_to_target < threshold, cone_cos - cos_theta + xi_entryangle[k], 0))
+            J += rho * xi_entryangle[k]**2
+
             X = X_next
 
-        J += mtimes([(X - x_ref).T, P, (X - x_ref)])
+        quat_err_ter = mtimes(quat_A, vertcat(X[6:10]))
+        J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
+        J += mtimes([quat_err_ter.T, P[6:10,6:10], quat_err_ter])
+        J += mtimes([(X[10:13] - x_ref[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13])])
+
         p = vertcat(x0, x_ref)
-        
+
         # Solver Design
-        nlp = {'x': reshape(U, -1, 1), 'f': J, 'g': vertcat(*g), 'p': p}
-        opts = {
-            'ipopt.print_level': 0, 
-            'print_time': 0, 
-            'ipopt.sb': 'yes', 
-            'ipopt.max_iter': 500, 
-            'ipopt.tol': 1e-5,  
-            'ipopt.acceptable_tol': 1e-4,  
-            'ipopt.constr_viol_tol': 1e-3,  
-        }
+        nlp = {'x': vertcat(reshape(U, -1, 1), xi_entryangle), 'f': J, 'g': vertcat(*g),'p': p}
+        opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-6}
 
         self.solver = nlpsol('solver', 'ipopt', nlp, opts)
 
-    def get_optimal_input(self, x0, x_ref, u_guess):
+    def get_optimal_input(self, current_state, x_ref, u_guess):
+    # Modify the cost function or constraints depending on apply_cone_constraint
         cost_iter = []
-        # Initial guess and bounds for the solver
+        xi_optimal = []
+        lbx_u = np.tile([self.u_min]*self.m, self.c_horizon)
+        ubx_u = np.tile([self.u_max] * self.m, self.c_horizon)
+        #ubx_u = np.tile([float('inf')] * self.m, self.c_horizon)
+        #lbx_u = np.tile([float('-inf')] * self.m, self.c_horizon)
+        lbx_xi = [0] * self.p_horizon
+        ubx_xi = [float(inf)] * self.p_horizon
         arg = {}
-        arg["x0"] = u_guess
-        arg["lbx"] = np.tile([self.u_min]*self.m, self.c_horizon)
-        arg["ubx"] = np.tile([self.u_max]*self.m, self.c_horizon)
-        arg["p"] = np.concatenate((x0, x_ref))
-        
-        # Set the bounds for the azimuth and elevation constraints
-        # arg["lbg"] = [self.azimuth_bounds[0], self.elevation_bounds[0]] * self.p_horizon
-        # arg["ubg"] = [self.azimuth_bounds[1], self.elevation_bounds[1]] * self.p_horizon
-        arg["lbg"] = [self.azimuth_bounds[0]] * self.p_horizon
-        arg["ubg"] = [self.azimuth_bounds[1]] * self.p_horizon
-        
-        # Solve the problem
+        arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon)))
+        #arg["x0"] = u_guess.flatten()
+        arg["lbx"] = np.concatenate((lbx_u,lbx_xi))
+        arg["ubx"] = np.concatenate((ubx_u,ubx_xi))
+        arg["lbg"] = [0] * self.p_horizon
+        arg["ubg"] = [float('inf')] * self.p_horizon
         res = self.solver(**arg)
-        u_opt = res['x'].full().reshape(self.c_horizon,self.m)
+        u_opt = res['x'].full().reshape(-1)[:self.c_horizon*self.m].reshape(self.c_horizon, self.m)
         cost_iter.append(float(res["f"]))
 
         return u_opt[0, :], cost_iter

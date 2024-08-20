@@ -116,10 +116,10 @@ class MPCController:
         J = 0
         g = []  # constraints list
         quat_A = vertcat(
-            horzcat(x_ref[0], x_ref[1], x_ref[2], x_ref[3]),
-            horzcat(-x_ref[1], x_ref[0], -x_ref[3], -x_ref[2]),
-            horzcat(-x_ref[2], -x_ref[3], x_ref[0], x_ref[1]),
-            horzcat(-x_ref[3], x_ref[2], -x_ref[1], x_ref[0])
+            horzcat(x_ref[6], x_ref[7], x_ref[8], x_ref[9]),
+            horzcat(-x_ref[7], x_ref[6], -x_ref[9], -x_ref[8]),
+            horzcat(-x_ref[8], -x_ref[9], x_ref[6], x_ref[7]),
+            horzcat(-x_ref[9], x_ref[8], -x_ref[7], x_ref[6])
         )
         for k in range(self.p_horizon):
             if k < c_horizon:
@@ -137,7 +137,6 @@ class MPCController:
             obstacle_margin_constraint = distance_to_obstacle - radius_obstacle * 2 + xi_obstacle[k]
             obstacle_constraint = distance_to_obstacle - radius_obstacle
 
-            
             g.append(obstacle_constraint)
             g.append(obstacle_margin_constraint)
             
@@ -184,6 +183,8 @@ class MPCController:
         # Initial guess and bounds for the solver
         lbx_u = np.tile([self.u_min]*self.m, self.c_horizon)
         ubx_u = np.tile([self.u_max] * self.m, self.c_horizon)
+        #ubx_u = np.tile([float('inf')] * self.m, self.c_horizon)
+        #lbx_u = np.tile([float('-inf')] * self.m, self.c_horizon)
         lbx_xi = [0] * self.p_horizon
         ubx_xi = [float(inf)] * self.p_horizon
         arg = {}
