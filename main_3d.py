@@ -9,21 +9,21 @@ import time
 start_time = time.time()
 
 # Constants
-mass = 1
+mass = 1 #[kg]
 Ixx, Iyy, Izz = 1, 1, 1
 I = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]])
-f_thruster = 1
-dx, dy = 1, 1
-u_min = 0
-u_max = 1
+f_thruster = 1 # Maximum Thrust [N]
+dx, dy = 1, 1 # Distance from the CoM to the Thrusters [m]
+u_min = 0 # Lower Thrust Bound
+u_max = 1 # Upper Thrust Bound
 
 # MPC Parameters
 dt_MPC = 1
-T_horizon = 12
-c_horizon = 3
-Q = 10 * np.eye(13)   # State Weighting Matrix
+T_horizon = 12 # Prediction Horizon = T_horizon / dt_MPC
+c_horizon = 3 # Control Horizon
+Q = 10 * np.eye(13) # State Weighting Matrix
 #Q[6:10,:] = 0
-R = 1 * np.eye(8)                     # Control weighting matrix
+R = 1 * np.eye(8) # Control Weighting matrix
 P = 100 * np.eye(13) # Terminal Cost Weighting Matrix
 #P[6:10,:] = 0
 MPC_freq = 1
@@ -32,36 +32,28 @@ MPC_freq = 1
 simulation_time = 300  # Total simulation time in seconds
 dt_sim = 1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
-x0 = np.zeros(13)
+x0 = np.zeros(13) # Initial State Initialization
 #x0[0] = 0.1
 x0[6:10] = euler_to_quaternion(0,0,0)
 
-
-static_reference = True
-
-
-# Reference State
+# Static Reference Scenario Parameters
 x_ref_static = np.zeros(13) 
-
 x_ref_static[0:2] = 10
 x_ref_static[6:10] = euler_to_quaternion(0, 0, 0) # Yaw, Pitch = 0, Roll = 0
-print(x_ref_static)
 
-# Reference Trajectory Intial State
+# Dynamic Reference Trajectory / Path Following Parameters
 x_ref_dyn_initial = np.zeros(13)
 x_ref_dyn_initial[6:10] = euler_to_quaternion(0,0,0)
-
 
 # Storage for states and inputs
 states = np.zeros((num_steps + 1, 13))
 inputs = np.zeros((num_steps, 8))
 states_euler = np.zeros((num_steps + 1, 3))
 
-# Set initial state
-states[0, :] = x0
-states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
-cost_evolution=[]
+# Path Following Condition (True -> Static Reference Target, False -> Path Following Scenario)
+static_reference = True
 
+# Target x_ref definition
 def target_dynamics(t):
     if static_reference == True:
         x_ref = x_ref_static
@@ -79,6 +71,11 @@ def target_dynamics(t):
         # x_ref[0] += 20 * np.exp(-0.01 * t) * np.cos(0.1*t)
         # x_ref[1] += 30 * np.exp(-0.01 * t) * np.sin(0.1*t) 
     return x_ref
+
+# Set initial state
+states[0, :] = x0
+states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
+cost_evolution=[]
 
 def main():
     controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max)
@@ -156,7 +153,6 @@ def main():
 
 
     # Plot trajectory
-    
     plt.figure(figsize=(8, 6))
     plt.plot(states[:, 0], states[:, 1])
     x_ref_evolution = np.array(x_ref_evolution)
@@ -166,7 +162,7 @@ def main():
     plt.title('Trajectory')
     plt.grid()
 
-
+    # Plot Quaternions
     plt.figure(figsize=(8,6))
     plt.plot(time, states[:, 6], label= 'q0')
     plt.plot(time, states[:, 7], label= 'q1')
@@ -179,5 +175,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # animate_trajectory(states, simulation_time, dt_sim)
     print("Process finished --- %s seconds ---" % (time.time() - start_time))

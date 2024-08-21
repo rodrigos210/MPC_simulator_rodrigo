@@ -138,10 +138,23 @@ class MPCController:
             
             # Enforce Cone Constraint Near End
 
-            v = vertcat(x_apex - X[0], y_apex - X[1], z_apex - X[2])
+            v = vertcat(X[0] - x_apex, X[1] - y_apex, X[2] - z_apex)
+            # Vector from the target position to the apex
+            target_vector = vertcat(0, 1, 0)
+
+            # Normalized vectors
             v_norm = norm_2(v)
-            cos_theta = (v[0] / v_norm)  # Dot product with x-axis direction
-            g.append(if_else(distance_to_target < threshold, cone_cos - cos_theta + xi_entryangle[k], 0))
+            target_norm = norm_2(target_vector)
+
+            # Cosine of the angle between the two vectors
+            cos_theta = mtimes(v.T, target_vector) / (v_norm * target_norm)
+
+            # Entry angle constraint based on cone angle
+            entry_angle_constraint = cos_theta - cone_cos
+
+            # Enforce cone constraint
+            g.append(entry_angle_constraint)
+            # g.append(if_else(distance_to_target < threshold, entry_angle_constraint, 0))
             J += rho * xi_entryangle[k]**2
 
             X = X_next

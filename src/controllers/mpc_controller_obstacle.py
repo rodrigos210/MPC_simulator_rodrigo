@@ -34,8 +34,9 @@ class MPCController:
         controls = u
         self.m = controls.size1()
 
-        # Slack variable initialization
-        xi_obstacle = MX.sym('xi_obstacle', self.p_horizon)  # One slack variable for each time step
+        # Slack variables initialization
+        xi_obstacle = MX.sym('xi_obstacle', self.p_horizon)  # Obstacle Margin Scack Variable
+        eta_target = MX.sym('eta_target', self.n) # Terminal Cost Position Slack Variable
 
         # Quaternion Rotation Matrix
         Rot = vertcat(
@@ -44,6 +45,7 @@ class MPCController:
             horzcat(2*q1*q3-2*q0*q2, 2*q2*q3+2*q0*q1, 1-2*q1**2-2*q2**2)
         )
 
+        # Input Matrix
         B_pos = vertcat(
             horzcat(1, -1, 1, -1, 0, 0, 0, 0),
             horzcat(0, 0, 0, 0, 1, -1, 1, -1),
@@ -56,6 +58,7 @@ class MPCController:
         y_ddot = pos_ddot[1]
         z_ddot = pos_ddot[2]
 
+        # Expanded Skew-Symmetric Omega Matrix
         Omega = vertcat(
             horzcat(0, -omega1, -omega2, -omega3),
             horzcat(omega1, 0, omega3, -omega2),
@@ -70,6 +73,7 @@ class MPCController:
         q2_dot = quat_dot[2]
         q3_dot = quat_dot[3]
 
+        # Torque Matrix
         T_matrix = vertcat(
             horzcat(0, 0, 0, 0, 0, 0, 0, 0),
             horzcat(0, 0, 0, 0, 0, 0, 0, 0),
@@ -78,6 +82,7 @@ class MPCController:
 
         omegas = vertcat(omega1, omega2, omega3)
 
+        # Omega Skew-Symmetric
         omega_tilde = vertcat(
             horzcat(0, -omega3, omega2),
             horzcat(omega3, 0, -omega1),
@@ -95,116 +100,116 @@ class MPCController:
         x_ref = MX.sym('x_ref', 13)
         x0 = MX.sym('x0', 13)
 
+        # Quaternion Matrix to calculate its variation
+        quat_A = vertcat(
+            horzcat(x_ref[6], x_ref[7], x_ref[8], x_ref[9]),
+            horzcat(-x_ref[7], x_ref[6], -x_ref[9], -x_ref[8]),
+            horzcat(-x_ref[8], -x_ref[9], x_ref[6], x_ref[7]),
+            horzcat(-x_ref[9], x_ref[8], -x_ref[7], x_ref[6]))
+        
         # Continuous Dynamics Function
         f = Function('f', [states, controls], [dynamics])
 
         ## Discretization 
-
-        # RK4 
+        # # RK4 
         # k1 = f(states, controls)
         # k2 = f(states + 0.5 * dt * k1, controls)
         # k3 = f(states + 0.5 * dt * k2, controls)
         # k4 = f(states + dt * k3, controls)
         # F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
 
-        # # Euler Forward
+        # Euler Forward
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
 
         U = MX.sym('U', self.m, self.c_horizon)
         X = x0  # Initial State
-        J = 0
+        J = 0 # Cost
         g = []  # constraints list
-        quat_A = vertcat(
-            horzcat(x_ref[6], x_ref[7], x_ref[8], x_ref[9]),
-            horzcat(-x_ref[7], x_ref[6], -x_ref[9], -x_ref[8]),
-            horzcat(-x_ref[8], -x_ref[9], x_ref[6], x_ref[7]),
-            horzcat(-x_ref[9], x_ref[8], -x_ref[7], x_ref[6])
-        )
+
+
         for k in range(self.p_horizon):
-            if k < c_horizon:
-                U_k = U[:, k]
-            else:
-                U_k = U[:, c_horizon-1]
-
-            X_next = F(X, U_k) 
-
-            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10])
             
-            pos_delta = X[0:3] - x_obstacle[0:3]
-            distance_to_obstacle = norm_2(pos_delta)
+            U_k = U[:, min(k, c_horizon-1)] # From the control horizon, U_k is set as U_c_horizon
+            
+            
+            pos_delta = X[0:3] - x_obstacle[0:3] # Position Deviation
+            distance_to_obstacle = norm_2(pos_delta) # Distance to the Obstacle
 
-            obstacle_margin_constraint = distance_to_obstacle - radius_obstacle * 2 + xi_obstacle[k]
-            obstacle_constraint = distance_to_obstacle - radius_obstacle
+            obstacle_margin_constraint = distance_to_obstacle - radius_obstacle * 2 + xi_obstacle[k] # Outer Circle Constraint (SOFT)
+            obstacle_constraint = distance_to_obstacle - radius_obstacle # Obstacle Constraint (HARD)
 
+            # Appending Constraints
             g.append(obstacle_constraint)
             g.append(obstacle_margin_constraint)
             
-            pos_vel_delta = X[0:6] - x_ref[0:6]
-            omega_delta = X[10:13] - x_ref[10:13]
-            
-            quat_err = mtimes(quat_A, vertcat(X[6:10]))
+            pos_vel_delta = X[0:6] - x_ref[0:6] # Position and Velocity Deviation
+            omega_delta = X[10:13] - x_ref[10:13] # Angular Rate Deviation
+            quat_err = mtimes(quat_A, vertcat(X[6:10])) # Quaternion Deviation
+
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
-            J += mtimes([x_delta.T, Q, x_delta])
-            J += mtimes([U_k.T, R, U_k])
-            J += rho * xi_obstacle[k]**2
-            
-            X = X_next
+            J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost 
+            J += mtimes([U_k.T, R, U_k]) # Input Cost 
+            J += rho * xi_obstacle[k]**2 # Obstacle Margin Constraint Cost
+
+            X_next = F(X, U_k) # Next State Computation
+            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # Quaternions Normalization
+            X = X_next # State Update
         
-        quat_err_ter = mtimes(quat_A, vertcat(X[6:10]))
-        J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
+        # Terminal Cost
+        quat_err_ter = mtimes(quat_A, vertcat(X[6:10])) #
+        J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
+        #J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
         J += mtimes([quat_err_ter.T, P[6:10,6:10], quat_err_ter])
         J += mtimes([(X[10:13] - x_ref[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13])])
         p = vertcat(x0,x_ref)
 
         # Solver Design
-        nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
-        #nlp = {'x': reshape(U, -1, 1), 'f': J, 'g': vertcat(*g), 'p': p}
-        #nlp = {'x': vertcat(reshape(U, -1, 1)), 'f': J, 'p': p}
-        opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-6}
-        # opts = {
-        #     'ipopt.print_level': 0, 
-        #     'print_time': 0, 
-        #     'ipopt.sb': 'yes', 
-        #     'ipopt.max_iter': 500, 
-        #     'ipopt.tol': 1e-5,
-        #     'ipopt.acceptable_tol': 1e-4,
-        #     'ipopt.constr_viol_tol': 1e-3,
-        # }
+        nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle, eta_target), 'f': J, 'g': vertcat(*g), 'p': p}
+        #nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
 
+        opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-6, 'ipopt.acceptable_tol': 1e-6, 'ipopt.constr_viol_tol': 1e-6}
 
-        self.solver = nlpsol('solver', 'ipopt', nlp, opts)
-        #self.solver = nlpsol('solver', 'sqpmethod', nlp)
+        self.solver = nlpsol('solver', 'ipopt', nlp, opts) # Solver Initiation with IPOPT
+        #self.solver = nlpsol('solver', 'sqpmethod', nlp) # Solver Initiation with SQP Method (NOT WORKING)
 
-
+    # Optimal Input Calculation
     def get_optimal_input(self, x0, x_ref, u_guess):
+
+        # Cost and Slack Variables Evolution Initialization
         cost_iter = []
         xi_optimal = []
-        # Initial guess and bounds for the solver
+        eta_optimal = []
+
+        # Bounds Organization
         lbx_u = np.tile([self.u_min]*self.m, self.c_horizon)
         ubx_u = np.tile([self.u_max] * self.m, self.c_horizon)
-        #ubx_u = np.tile([float('inf')] * self.m, self.c_horizon)
-        #lbx_u = np.tile([float('-inf')] * self.m, self.c_horizon)
         lbx_xi = [0] * self.p_horizon
         ubx_xi = [float(inf)] * self.p_horizon
+        lbx_eta = [float(-inf)] * self.n
+        ubx_eta = [float(inf)] * self.n
+
+        # Solver Bounds, Parameters, and Initial States Definition
         arg = {}
-        arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon)))
-        #arg["x0"] = u_guess.flatten()
-        arg["lbx"] = np.concatenate((lbx_u,lbx_xi))
-        arg["ubx"] = np.concatenate((ubx_u,ubx_xi))
-        #arg["lbx"] = lbx_u
-        #arg["ubx"] = ubx_u
-        #arg["lbg"] = [0] * self.p_horizon  
+        arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon), np.zeros(self.n)))
+        # arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon))) # To test without \eta
+        arg["lbx"] = np.concatenate((lbx_u,lbx_xi, lbx_eta))
+        arg["ubx"] = np.concatenate((ubx_u,ubx_xi, ubx_eta))
+        # arg["lbx"] = np.concatenate((lbx_u,lbx_xi)) # To test without \eta
+        # arg["ubx"] = np.concatenate((ubx_u,ubx_xi)) # To test without \eta
         arg["lbg"] = [0, 0] * self.p_horizon
-        #arg["ubg"] = [float('inf')] * self.p_horizon  
         arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon  
+        #arg["lbg"] = [0] * self.p_horizon  # To test without \eta
+        #arg["ubg"] = [float('inf')] * self.p_horizon  # To test without \eta
         arg["p"] = np.concatenate((x0, x_ref))
         
         # Solve the problem
         res = self.solver(**arg)
         u_opt = res['x'].full().reshape(-1)[:self.c_horizon*self.m].reshape(self.c_horizon, self.m)
-        #u_opt = res['x'].full().reshape(self.c_horizon,self.m)
-        xi_optimal.append(res['x'].full().reshape(-1)[self.c_horizon*self.m:])
+
+        # Evolutions Track
+        xi_optimal.append(res['x'].full().reshape(-1)[self.c_horizon*self.m:self.c_horizon * self.m + self.p_horizon])
+        eta_optimal.append(res['x'].full().reshape(-1)[self.c_horizon * self.m + self.p_horizon:])
         cost_iter.append(float(res["f"]))
 
-        return u_opt, xi_optimal, cost_iter
+        return u_opt, xi_optimal, eta_optimal, cost_iter
