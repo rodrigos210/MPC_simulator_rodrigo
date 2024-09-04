@@ -1,14 +1,16 @@
 from casadi import *
+from src.util.quaternion_inverse import quaternion_inverse
+from src.util.quaternion_update import next_quaternion
 
 class MPCController:
-    def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, x_obstacle, radius_obstacle, rho):
+    def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, x_obstacle, radius_obstacle, rho, radius_spacecraft):
         
         self.p_horizon = p_horizon = int(time_horizon/dt)
         self.c_horizon = c_horizon
         self.u_min = u_min
         self.u_max = u_max
         self.radius_obstacle = radius_obstacle
-
+        self.radius_spacecraft = radius_spacecraft
 
         # States Variables Initialization
         x = MX.sym('x')
@@ -122,22 +124,25 @@ class MPCController:
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
 
+        next_quaternions = mtimes(cos(0.5 * norm_2(omegas) * dt) * MX.eye(4) + (1/norm_2(omegas)) * sin(0.5 * norm_2(omegas) * dt) * Omega, quat)
+        #next_quaternions = next_quaternion(omegas, dt, Omega, quat)
+        F_quat = Function('F_quat', [states, controls], [next_quaternions]) 
+
         U = MX.sym('U', self.m, self.c_horizon)
         X = x0  # Initial State
         J = 0 # Cost
         g = []  # constraints list
 
-
         for k in range(self.p_horizon):
             
             U_k = U[:, min(k, c_horizon-1)] # From the control horizon, U_k is set as U_c_horizon
             
-            
             pos_delta = X[0:3] - x_obstacle[0:3] # Position Deviation
             distance_to_obstacle = norm_2(pos_delta) # Distance to the Obstacle
+            effective_obstacle_radius = radius_obstacle + radius_spacecraft
 
-            obstacle_margin_constraint = distance_to_obstacle - radius_obstacle * 2 + xi_obstacle[k] # Outer Circle Constraint (SOFT)
-            obstacle_constraint = distance_to_obstacle - radius_obstacle # Obstacle Constraint (HARD)
+            obstacle_margin_constraint = distance_to_obstacle - effective_obstacle_radius * 2 + xi_obstacle[k] # Outer Circle Constraint (SOFT)
+            obstacle_constraint = distance_to_obstacle - effective_obstacle_radius # Obstacle Constraint (HARD)
 
             # Appending Constraints
             g.append(obstacle_constraint)
@@ -145,7 +150,8 @@ class MPCController:
             
             pos_vel_delta = X[0:6] - x_ref[0:6] # Position and Velocity Deviation
             omega_delta = X[10:13] - x_ref[10:13] # Angular Rate Deviation
-            quat_err = mtimes(quat_A, vertcat(X[6:10])) # Quaternion Deviation
+            #quat_err = mtimes(quat_A, vertcat(X[6:10])) # Quaternion Deviation
+            quat_err = mtimes(quat_A, quaternion_inverse(X[6:10]))
 
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
             J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost 
@@ -153,13 +159,15 @@ class MPCController:
             J += rho * xi_obstacle[k]**2 # Obstacle Margin Constraint Cost
 
             X_next = F(X, U_k) # Next State Computation
+            X_next[6:10] = F_quat(X, U_k) #(Only working if norm of initial omegas aren't 0!!!)
+
             X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # Quaternions Normalization
             X = X_next # State Update
         
         # Terminal Cost
         quat_err_ter = mtimes(quat_A, vertcat(X[6:10])) #
-        J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
-        #J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
+        #J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
+        J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
         J += mtimes([quat_err_ter.T, P[6:10,6:10], quat_err_ter])
         J += mtimes([(X[10:13] - x_ref[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13])])
         p = vertcat(x0,x_ref)
