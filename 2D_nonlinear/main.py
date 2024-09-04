@@ -25,11 +25,10 @@ MPC_freq = 1
 simulation_time = 300  # Total simulation time in seconds
 dt_sim = 1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
-x0 = np.array([20, 0, 0, 0, 0, 0]) # Initial state
-
+x0 = np.array([0.5, 0, 0.5, 0, 0, 0]) # Initial state
 static_reference = False
-x_ref_static = np.array([100, 0, 100, 0, 0, 0]) # Reference state
-x_ref_dyn_initial = np.array([0, 0, 0, 0, 0, 0]) # Reference Trajectory Intial State
+x_ref_static = np.array([3.5, 0, 3.5, 0, 0, 0]) # Reference state
+x_ref_dyn_initial = np.array([0.5, 0, 0.5, 0, 0, 0]) # Reference Trajectory Intial State
 
 # Storage for states and inputs
 states = np.zeros((num_steps + 1, 6))
@@ -53,8 +52,8 @@ def target_dynamics(t):
         # x_ref[2] += np.sin((np.pi/4)*t)
 
         # Decaying Eliptical Motion
-        x_ref[0] += 20 * np.exp(-0.01 * t) * np.cos(0.1*t)
-        x_ref[2] += 30 * np.exp(-0.01 * t) * np.sin(0.1*t) 
+        x_ref[0] += 2 * np.exp(-0.01 * t) * np.cos(0.1*t)
+        x_ref[2] += 3 * np.exp(-0.01 * t) * np.sin(0.1*t) 
     return x_ref
 
 def main():
