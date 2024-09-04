@@ -5,6 +5,8 @@ from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
 from src.util.quat2eul import quaternion_to_euler
 from src.util.eul2quat import euler_to_quaternion
+from src.util.quaternion_rotation import quaternion_rotation_matrix
+
 import time
 start_time = time.time()
 
@@ -13,9 +15,17 @@ mass = 1 #[kg]
 Ixx, Iyy, Izz = 1, 1, 1
 I = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]])
 f_thruster = 1 # Maximum Thrust [N]
-dx, dy = 1, 1 # Distance from the CoM to the Thrusters [m]
+dx, dy = 0.5, 0.5 # Distance from the CoM to the Thrusters [m]
 u_min = 0 # Lower Thrust Bound
 u_max = 1 # Upper Thrust Bound
+L = 1 # Length of the Robot (L x L)
+r_spacecraft = 0.5 * (L * np.sqrt(2)) # For approximating the shape of the sc to a c
+vertices = np.array([
+    [-L/2, -L/2, 0],
+    [L/2, -L/2, 0],
+    [L/2, L/2, 0],
+    [-L/2, L/2, 0]
+])
 
 # MPC Parameters
 dt_MPC = 1
@@ -36,6 +46,7 @@ dt_sim = 1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
 x0[6:10] = euler_to_quaternion(0,0,0)
+x0[10:13] = [0.0, 1e-15, 0] # one of the terms of the angular velocity still has to be > 0 due to division by 0 errors
 
 predicted_states = np.zeros((num_steps, c_horizon, 13)) # Initialization for predicted state and inputs evolution
 predicted_inputs = np.zeros((num_steps, c_horizon, 8))
@@ -94,7 +105,7 @@ xi_evolution = [] # Obstacle Marging Slack Variable Evolution
 eta_evolution = [] # Terminal Cost Slack Variable Evolution
 
 def main():
-    controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, x_obstacle, r_obstacle, rho)
+    controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, x_obstacle, r_obstacle, rho, r_spacecraft)
     u_guess = np.zeros((c_horizon * 8, 1))
 
     # Simulate the system
@@ -117,6 +128,12 @@ def main():
         x_next = states[t + 1, :] = rk4_step(states[t, :], u[0,:], dt_sim)
         # Store the input and the next state
         states[t + 1, :] = x_next
+        # Store the vertices position 
+        vertices_inertial = []
+        for vertice in vertices:
+            vertice_inertial = np.dot(quaternion_rotation_matrix(states[t+1, 6:10]), vertice) + states[t+1, 0:3]
+            vertices_inertial.append(vertice_inertial)
+
         inputs[t, :] = u[0, :]
         u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
         states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
@@ -213,8 +230,57 @@ def main():
     plt.grid()
     plt.show() 
 
+def animate_trajectory(states, vertices, x_obstacle, r_obstacle):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    # Plot the obstacle
+    obstacle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
+    ax.add_patch(obstacle)
+    
+    # Initialize the spacecraft's trajectory plot and the square body plot
+    trajectory, = ax.plot([], [], 'b-', label='Trajectory')
+    
+    # Dummy vertices to initialize the Polygon
+    dummy_vertices = np.zeros((len(vertices), 2))
+    body = plt.Polygon(dummy_vertices, closed=True, color='r', alpha=0.5, label='Spacecraft Body')
+    ax.add_patch(body)
+    
+    # Set plot limits
+    ax.set_xlim(-1, 15)
+    ax.set_ylim(-1, 15)
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_title('Spacecraft Trajectory and Body Animation')
+    ax.grid(True)
+    ax.legend()
+
+    def init():
+        trajectory.set_data([], [])
+        body.set_xy(dummy_vertices)
+        return trajectory, body,
+
+    def update(frame):
+        # Update trajectory
+        trajectory.set_data(states[:frame, 0], states[:frame, 1])
+        
+        # Compute the new vertices in the inertial frame
+        vertices_inertial = []
+        for vertice in vertices:
+            vertice_inertial = np.dot(quaternion_rotation_matrix(states[frame, 6:10]), vertice) + states[frame, 0:3]
+            vertices_inertial.append(vertice_inertial[:2])
+        
+        body.set_xy(vertices_inertial)
+        return trajectory, body,
+
+    ani = FuncAnimation(fig, update, frames=num_steps, init_func=init, blit=True, repeat=False)
+    
+    # Display the animation
+    plt.show()
+
+
 if __name__ == "__main__":
     main()
+    animate_trajectory(states, vertices, x_obstacle, r_obstacle)
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     
 
