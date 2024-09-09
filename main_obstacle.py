@@ -5,8 +5,7 @@ from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
 from src.util.quat2eul import quaternion_to_euler
 from src.util.eul2quat import euler_to_quaternion
-from src.util.quaternion_rotation import quaternion_rotation_matrix
-
+from src.util.quaternion_rotation import quaternion_to_rotation_matrix_numpy
 import time
 start_time = time.time()
 
@@ -30,23 +29,28 @@ vertices = np.array([
 # MPC Parameters
 dt_MPC = 1
 T_horizon = 12 # Prediction Horizon = T_horizon / dt_MPC
-c_horizon = 2 # Control Horizon
+c_horizon = 3 # Control Horizon
 Q = 1e3 * np.eye(13) # State Weighting Matrix
-Q[3:5,3:5] = 1e5
-#Q[6:10,:] = 0
-R = 10 * np.eye(8)   # Control Weighting Matrix
-P = 100 * np.eye(13) # Terminal Cost Weighting Matrix
-#P[6:10,:] = 0
-rho = 1e6 # Obstacle Marging Slack Variable Weight
+Q[3,3] = 1e5
+Q[4,4] = 1e5
+Q[10:13,10:13] = 1e5 * np.eye(3)
+#Q[5,5] = 0
+#Q[2,2] = 0
+#Q[3:5,3:5] = 1
+Q[6:10,:] = 0
+R = 1e3 * np.eye(8)   # Control Weighting Matrix
+P = 1e4* np.eye(13) # Terminal Cost Weighting Matrix
+P[6:10,:] = 0
+rho = 1e10 # Obstacle Marging Slack Variable Weight
 MPC_freq = 1
 
 # Simulation parameters
-simulation_time = 300  # Total simulation time in seconds
+simulation_time = 150  # Total simulation time in seconds
 dt_sim = 1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
 x0[6:10] = euler_to_quaternion(0,0,0)
-x0[10:13] = [0.0, 1e-15, 0] # one of the terms of the angular velocity still has to be > 0 due to division by 0 errors
+x0[10:13] = [0.0, 1e-24, 0] # one of the terms of the angular velocity still has to be > 0 due to division by 0 errors
 
 predicted_states = np.zeros((num_steps, c_horizon, 13)) # Initialization for predicted state and inputs evolution
 predicted_inputs = np.zeros((num_steps, c_horizon, 8))
@@ -105,7 +109,7 @@ xi_evolution = [] # Obstacle Marging Slack Variable Evolution
 eta_evolution = [] # Terminal Cost Slack Variable Evolution
 
 def main():
-    controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, x_obstacle, r_obstacle, rho, r_spacecraft)
+    controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, x_obstacle, r_obstacle, rho, r_spacecraft, vertices)
     u_guess = np.zeros((c_horizon * 8, 1))
 
     # Simulate the system
@@ -131,14 +135,14 @@ def main():
         # Store the vertices position 
         vertices_inertial = []
         for vertice in vertices:
-            vertice_inertial = np.dot(quaternion_rotation_matrix(states[t+1, 6:10]), vertice) + states[t+1, 0:3]
+            vertice_inertial = np.dot(quaternion_to_rotation_matrix_numpy(states[t+1, 6:10]), vertice) + states[t+1, 0:3]
             vertices_inertial.append(vertice_inertial)
 
         inputs[t, :] = u[0, :]
         u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
         states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
         
-    
+def plots_scenario():
     # Plotting
     time = np.linspace(0, simulation_time, num_steps + 1)
     x_ref_evolution = []
@@ -212,8 +216,14 @@ def main():
     plt.plot(x_ref_evolution[:, 0], x_ref_evolution[:, 1],"--")
     body = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
     circle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    circle_exterior = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
+    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.01, color = 'r', fill = True)
+
+    plt.gca().add_patch(dot)
+    plt.gca().add_patch(circle_exterior)
     plt.gca().add_patch(circle)
     plt.gca().add_patch(body)
+    
     plt.xlabel('x')
     plt.ylabel('y')
     plt.title('Trajectory')
@@ -230,13 +240,26 @@ def main():
     plt.grid()
     plt.show() 
 
-def animate_trajectory(states, vertices, x_obstacle, r_obstacle):
+    # Plot yaw times x
+    plt.figure(figsize=(8,6))
+    plt.plot(states[:, 0], states_euler[:, 0])
+    plt.xlabel('x')
+    plt.ylabel('yaw')
+    plt.grid()
+    plt.show() 
+
+def animate_trajectory():
     fig, ax = plt.subplots(figsize=(8, 6))
     
     # Plot the obstacle
     obstacle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
-    ax.add_patch(obstacle)
+    obstacle_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', fill=True)
+    margin_of_the_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_spacecraft, color='#B7B6B6', fill=False)
     
+    ax.add_patch(margin_of_the_margin)
+    ax.add_patch(obstacle_margin)
+    ax.add_patch(obstacle)
+
     # Initialize the spacecraft's trajectory plot and the square body plot
     trajectory, = ax.plot([], [], 'b-', label='Trajectory')
     
@@ -266,7 +289,7 @@ def animate_trajectory(states, vertices, x_obstacle, r_obstacle):
         # Compute the new vertices in the inertial frame
         vertices_inertial = []
         for vertice in vertices:
-            vertice_inertial = np.dot(quaternion_rotation_matrix(states[frame, 6:10]), vertice) + states[frame, 0:3]
+            vertice_inertial = np.dot(quaternion_to_rotation_matrix_numpy(states[frame, 6:10]), vertice) + states[frame, 0:3]
             vertices_inertial.append(vertice_inertial[:2])
         
         body.set_xy(vertices_inertial)
@@ -280,7 +303,9 @@ def animate_trajectory(states, vertices, x_obstacle, r_obstacle):
 
 if __name__ == "__main__":
     main()
-    animate_trajectory(states, vertices, x_obstacle, r_obstacle)
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
+    plots_scenario()
+    animate_trajectory()
+    
     
 

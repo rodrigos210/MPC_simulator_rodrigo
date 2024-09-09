@@ -1,9 +1,11 @@
 from casadi import *
 from src.util.quaternion_inverse import quaternion_inverse
-from src.util.quaternion_update import next_quaternion
+from src.util.quaternion_update import quaternion_update_ca
+from src.util.quaternion_rotation import quaternion_to_rotation_matrix_casadi
+from src.util.quaternion_ahrs import quaternion_ahrs
 
 class MPCController:
-    def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, x_obstacle, radius_obstacle, rho, radius_spacecraft):
+    def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, x_obstacle, radius_obstacle, rho, radius_spacecraft, vertices):
         
         self.p_horizon = p_horizon = int(time_horizon/dt)
         self.c_horizon = c_horizon
@@ -11,6 +13,7 @@ class MPCController:
         self.u_max = u_max
         self.radius_obstacle = radius_obstacle
         self.radius_spacecraft = radius_spacecraft
+        self.vertices = vertices
 
         # States Variables Initialization
         x = MX.sym('x')
@@ -112,21 +115,22 @@ class MPCController:
         # Continuous Dynamics Function
         f = Function('f', [states, controls], [dynamics])
 
-        ## Discretization 
-        # # RK4 
+        # # Discretization 
+        # RK4 
         # k1 = f(states, controls)
         # k2 = f(states + 0.5 * dt * k1, controls)
         # k3 = f(states + 0.5 * dt * k2, controls)
         # k4 = f(states + dt * k3, controls)
-        # F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
+        # next_states = states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+        # F = Function('F', [states, controls], [next_states])
+        #F = Function('F', [states, controls], [states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)])
 
         # Euler Forward
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
-
-        next_quaternions = mtimes(cos(0.5 * norm_2(omegas) * dt) * MX.eye(4) + (1/norm_2(omegas)) * sin(0.5 * norm_2(omegas) * dt) * Omega, quat)
-        #next_quaternions = next_quaternion(omegas, dt, Omega, quat)
+        next_quaternions = quaternion_update_ca(states[6:10], states[10:13], dt)
         F_quat = Function('F_quat', [states, controls], [next_quaternions]) 
+
 
         U = MX.sym('U', self.m, self.c_horizon)
         X = x0  # Initial State
@@ -139,19 +143,20 @@ class MPCController:
             
             pos_delta = X[0:3] - x_obstacle[0:3] # Position Deviation
             distance_to_obstacle = norm_2(pos_delta) # Distance to the Obstacle
+            
             effective_obstacle_radius = radius_obstacle + radius_spacecraft
+            effective__margin_radius = radius_obstacle*2 +radius_spacecraft
 
-            obstacle_margin_constraint = distance_to_obstacle - effective_obstacle_radius * 2 + xi_obstacle[k] # Outer Circle Constraint (SOFT)
+            obstacle_margin_constraint = distance_to_obstacle - effective__margin_radius + xi_obstacle[k] # Outer Circle Constraint (SOFT)
             obstacle_constraint = distance_to_obstacle - effective_obstacle_radius # Obstacle Constraint (HARD)
-
+            
             # Appending Constraints
             g.append(obstacle_constraint)
             g.append(obstacle_margin_constraint)
             
             pos_vel_delta = X[0:6] - x_ref[0:6] # Position and Velocity Deviation
             omega_delta = X[10:13] - x_ref[10:13] # Angular Rate Deviation
-            #quat_err = mtimes(quat_A, vertcat(X[6:10])) # Quaternion Deviation
-            quat_err = mtimes(quat_A, quaternion_inverse(X[6:10]))
+            quat_err = mtimes(quat_A, quaternion_inverse(X[6:10])) # Quaternion Deviation
 
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
             J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost 
@@ -160,23 +165,22 @@ class MPCController:
 
             X_next = F(X, U_k) # Next State Computation
             X_next[6:10] = F_quat(X, U_k) #(Only working if norm of initial omegas aren't 0!!!)
-
-            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # Quaternions Normalization
+            #X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # Quaternions Normalization
             X = X_next # State Update
         
         # Terminal Cost
         quat_err_ter = mtimes(quat_A, vertcat(X[6:10])) #
-        #J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
-        J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
-        J += mtimes([quat_err_ter.T, P[6:10,6:10], quat_err_ter])
-        J += mtimes([(X[10:13] - x_ref[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13])])
+        J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
+        #J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
+        J += mtimes([(quat_err_ter + eta_target[6:10]).T , P[6:10,6:10], (quat_err_ter + eta_target[6:10])])
+        J += mtimes([(X[10:13] - x_ref[10:13] + eta_target[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13] + eta_target[10:13])])
         p = vertcat(x0,x_ref)
 
         # Solver Design
         nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle, eta_target), 'f': J, 'g': vertcat(*g), 'p': p}
         #nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
 
-        opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-6, 'ipopt.acceptable_tol': 1e-6, 'ipopt.constr_viol_tol': 1e-6}
+        opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-4, 'ipopt.acceptable_tol': 1e-3, 'ipopt.constr_viol_tol': 1e-4}
 
         self.solver = nlpsol('solver', 'ipopt', nlp, opts) # Solver Initiation with IPOPT
         #self.solver = nlpsol('solver', 'sqpmethod', nlp) # Solver Initiation with SQP Method (NOT WORKING)
@@ -200,15 +204,15 @@ class MPCController:
         # Solver Bounds, Parameters, and Initial States Definition
         arg = {}
         arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon), np.zeros(self.n)))
-        # arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon))) # To test without \eta
+        #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon))) # To test without \eta
         arg["lbx"] = np.concatenate((lbx_u,lbx_xi, lbx_eta))
         arg["ubx"] = np.concatenate((ubx_u,ubx_xi, ubx_eta))
-        # arg["lbx"] = np.concatenate((lbx_u,lbx_xi)) # To test without \eta
-        # arg["ubx"] = np.concatenate((ubx_u,ubx_xi)) # To test without \eta
+        #arg["lbx"] = np.concatenate((lbx_u,lbx_xi)) # To test without \eta
+        #arg["ubx"] = np.concatenate((ubx_u,ubx_xi)) # To test without \eta
         arg["lbg"] = [0, 0] * self.p_horizon
         arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon  
-        #arg["lbg"] = [0] * self.p_horizon  # To test without \eta
-        #arg["ubg"] = [float('inf')] * self.p_horizon  # To test without \eta
+        #arg["lbg"] = [0] * self.p_horizon  # To test without one of obstacle constraints
+        #arg["ubg"] = [float('inf')] * self.p_horizon  # To test without one of the obstacle constraints
         arg["p"] = np.concatenate((x0, x_ref))
         
         # Solve the problem
