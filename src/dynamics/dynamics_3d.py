@@ -1,5 +1,6 @@
 import numpy as np
 from ahrs.filters import AngularRate 
+from src.util.quaternion_update import quaternion_update_np
 
 # Constants
 mass = 1
@@ -65,13 +66,8 @@ def rk4_step(states, controls, dt):
     k4 = dynamics(states + dt * k3, controls)
     x_next = states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
-    omega1, omega2, omega3 = states[10:13]
-    Omega = np.array([[0, -omega1, -omega2, -omega3],
-                      [omega1, 0, omega3, -omega2],
-                      [omega2, -omega3, 0, omega1],
-                      [omega3, omega2, -omega1, 0]])
-    
-    angular_rate = AngularRate()
+    angular_rate = AngularRate(frequency=1/dt)
     x_next[6:10] = angular_rate.update(states[6:10], states[10:13]) # Closed-Form quaternion update (https://ahrs.readthedocs.io/en/latest/filters/angular.html)
+    #x_next[6:10] = quaternion_update_np(states[6:10], states[10:13], dt)
     x_next[6:10] = x_next[6:10] / np.linalg.norm(x_next[6:10]) # Quaternion Normalization
     return x_next

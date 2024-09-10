@@ -2,7 +2,6 @@ from casadi import *
 from src.util.quaternion_inverse import quaternion_inverse
 from src.util.quaternion_update import quaternion_update_ca
 from src.util.quaternion_rotation import quaternion_to_rotation_matrix_casadi
-from src.util.quaternion_ahrs import quaternion_ahrs
 
 class MPCController:
     def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, x_obstacle, radius_obstacle, rho, radius_spacecraft, vertices):
@@ -197,9 +196,9 @@ class MPCController:
         lbx_u = np.tile([self.u_min]*self.m, self.c_horizon)
         ubx_u = np.tile([self.u_max] * self.m, self.c_horizon)
         lbx_xi = [0] * self.p_horizon
-        ubx_xi = [float(inf)] * self.p_horizon
-        lbx_eta = [float(-inf)] * self.n
-        ubx_eta = [float(inf)] * self.n
+        ubx_xi = [float('inf')] * self.p_horizon
+        lbx_eta = [float('-inf')] * self.n
+        ubx_eta = [float('inf')] * self.n
 
         # Solver Bounds, Parameters, and Initial States Definition
         arg = {}

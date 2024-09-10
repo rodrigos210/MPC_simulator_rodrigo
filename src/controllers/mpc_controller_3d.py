@@ -1,6 +1,5 @@
 from casadi import *
-
-
+from src.util.quaternion_inverse import quaternion_inverse
 
 class MPCController:
     def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max):
@@ -64,6 +63,7 @@ class MPCController:
 
         quat = vertcat(q0, q1, q2, q3)
         quat_dot = 0.5 * mtimes(Omega, quat)
+        
         q0_dot = quat_dot[0]
         q1_dot = quat_dot[1]
         q2_dot = quat_dot[2]
@@ -119,8 +119,9 @@ class MPCController:
         F = Function('F', [states, controls], [next_state])
 
         # Quaternions Update (not functional yet)
-        next_quaternions2 = mtimes(cos(0.5 * norm_2(omegas)) * MX.eye(4) + (0.1 * norm_2(omegas))*sin(0.5*norm_2(omegas))*Omega, quat)
-        F_quat = Function('F_quat', [states, controls], [next_quaternions2])  
+        next_quaternions = mtimes(cos(0.5 * norm_2(omegas) * dt) * MX.eye(4) + (1/norm_2(omegas)) * sin(0.5 * norm_2(omegas) * dt) * Omega, quat)
+        # next_quaternions = mtimes(MX.eye(4) + 0.5 * Omega * dt, quat)
+        F_quat = Function('F_quat', [states, controls], [next_quaternions])  
 
         U = MX.sym('U', self.m, self.c_horizon)
         X = x0 # Initial State
@@ -139,7 +140,8 @@ class MPCController:
             J += mtimes([U_k.T, R, U_k]) # Input Cost
             
             X_next = F(X, U_k) # Next State Computation
-            #X_next[6:10] = F_quat(X, U_k) #(Not working)
+            # X_next[6:10] = if_else(norm_2(omegas) == 0, X_next[6:10], F_quat(X, U_k))
+            quat_next = F_quat(X, U_k)
             X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # Quaternions Normalization
             X = X_next # State Update
         
@@ -172,7 +174,7 @@ class MPCController:
         
         # Solve the problem
         res = self.solver(**arg)
-        u_opt = res['x'].full().reshape(self.c_horizon,self.m)
+        u_opt = res['x'].full().reshape(self.c_horizon, self.m)
         cost_iter.append(float(res["f"]))
 
         return u_opt[0, :], cost_iter       
