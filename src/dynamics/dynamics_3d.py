@@ -66,8 +66,8 @@ def rk4_step(states, controls, dt):
     k4 = dynamics(states + dt * k3, controls)
     x_next = states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
-    angular_rate = AngularRate(frequency=1/dt)
-    x_next[6:10] = angular_rate.update(states[6:10], states[10:13]) # Closed-Form quaternion update (https://ahrs.readthedocs.io/en/latest/filters/angular.html)
-    #x_next[6:10] = quaternion_update_np(states[6:10], states[10:13], dt)
+    angular_rate = AngularRate(frequency=1.0/dt)
+    #x_next[6:10] = angular_rate.update(states[6:10], states[10:13]) # Closed-Form quaternion update (https://ahrs.readthedocs.io/en/latest/filters/angular.html)
+    x_next[6:10] = quaternion_update_np(states[6:10], states[10:13], dt)
     x_next[6:10] = x_next[6:10] / np.linalg.norm(x_next[6:10]) # Quaternion Normalization
     return x_next
