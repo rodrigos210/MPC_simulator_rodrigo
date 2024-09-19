@@ -12,7 +12,7 @@ def quaternion_update_ca(quat, omegas, dt):
         ca.horzcat(omegas[2], omegas[1], -omegas[0], 0)
     )
 
-    next_quat = ca.mtimes(ca.cos(0.5 * ca.norm_2(omegas) * dt) * ca.MX.eye(4) + (1/ca.norm_2(omegas)) * ca.sin(0.5 * ca.norm_2(omegas) * dt) * Omega, quat)
+    next_quat = ca.mtimes(ca.cos(0.5 * ca.norm_2(omegas) * dt) * ca.SX.eye(4) + (1/ca.norm_2(omegas)) * ca.sin(0.5 * ca.norm_2(omegas) * dt) * Omega, quat)
     next_quat = next_quat/ca.norm_2(next_quat)
     return next_quat
 

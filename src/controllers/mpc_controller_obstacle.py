@@ -15,32 +15,32 @@ class MPCController:
         self.vertices = vertices
 
         # States Variables Initialization
-        x = MX.sym('x')
-        y = MX.sym('y')
-        z = MX.sym('z')
-        x_dot = MX.sym('x_dot')
-        y_dot = MX.sym('y_dot')
-        z_dot = MX.sym('z_dot')
-        q0 = MX.sym('q0')
-        q1 = MX.sym('q1')
-        q2 = MX.sym('q2')
-        q3 = MX.sym('q3')
-        omega1 = MX.sym('omega1')
-        omega2 = MX.sym('omega2')
-        omega3 = MX.sym('omega3')
+        x = SX.sym('x')
+        y = SX.sym('y')
+        z = SX.sym('z')
+        x_dot = SX.sym('x_dot')
+        y_dot = SX.sym('y_dot')
+        z_dot = SX.sym('z_dot')
+        q0 = SX.sym('q0')
+        q1 = SX.sym('q1')
+        q2 = SX.sym('q2')
+        q3 = SX.sym('q3')
+        omega1 = SX.sym('omega1')
+        omega2 = SX.sym('omega2')
+        omega3 = SX.sym('omega3')
 
         # State Vector Concatenation
         states = vertcat(x, y, z, x_dot, y_dot, z_dot, q0, q1, q2, q3, omega1, omega2, omega3)
         self.n = states.size1()
 
         # Control Variables Initialization
-        u = MX.sym('u', 8)
+        u = SX.sym('u', 8)
         controls = u
         self.m = controls.size1()
 
         # Slack variables initialization
-        xi_obstacle = MX.sym('xi_obstacle', self.p_horizon)  # Obstacle Margin Scack Variable
-        eta_target = MX.sym('eta_target', self.n) # Terminal Cost Position Slack Variable
+        xi_obstacle = SX.sym('xi_obstacle', self.p_horizon)  # Obstacle Margin Scack Variable
+        eta_target = SX.sym('eta_target', self.n) # Terminal Cost Position Slack Variable
 
         # Quaternion Rotation Matrix
         Rot = vertcat(
@@ -98,11 +98,11 @@ class MPCController:
         omega2_dot = omega_dot[1]
         omega3_dot = omega_dot[2]
 
-        dynamics = vertcat(x_dot, y_dot, z_dot, x_ddot, y_ddot, z_ddot, q0_dot, q1_dot, q2_dot, q3_dot, omega1_dot, omega2_dot, omega3_dot)
-
+        #dynamics = vertcat(x_dot, y_dot, z_dot, x_ddot, y_ddot, z_ddot, q0_dot, q1_dot, q2_dot, q3_dot, omega1_dot, omega2_dot, omega3_dot)
+        dynamics = vertcat(x_dot, y_dot, z_dot, x_ddot, y_ddot, z_ddot, 0, 0, 0, 0, omega1_dot, omega2_dot, omega3_dot)
         # Initial and Target State 
-        x_ref = MX.sym('x_ref', 13)
-        x0 = MX.sym('x0', 13)
+        x_ref = SX.sym('x_ref', 13)
+        x0 = SX.sym('x0', 13)
 
         # Quaternion Matrix to calculate its variation
         quat_A = vertcat(
@@ -131,7 +131,7 @@ class MPCController:
         F_quat = Function('F_quat', [states, controls], [next_quaternions]) 
 
 
-        U = MX.sym('U', self.m, self.c_horizon)
+        U = SX.sym('U', self.m, self.c_horizon)
         X = x0  # Initial State
         J = 0 # Cost
         g = []  # constraints list
@@ -169,15 +169,20 @@ class MPCController:
         
         # Terminal Cost
         quat_err_ter = mtimes(quat_A, vertcat(X[6:10])) #
-        J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
-        #J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
-        J += mtimes([(quat_err_ter + eta_target[6:10]).T , P[6:10,6:10], (quat_err_ter + eta_target[6:10])])
-        J += mtimes([(X[10:13] - x_ref[10:13] + eta_target[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13] + eta_target[10:13])])
+
+        # J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
+        # J += mtimes([(quat_err_ter + eta_target[6:10]).T , P[6:10,6:10], (quat_err_ter + eta_target[6:10])])
+        # J += mtimes([(X[10:13] - x_ref[10:13] + eta_target[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13] + eta_target[10:13])])
+
+        J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
+        J += mtimes([(quat_err_ter).T , P[6:10,6:10], quat_err_ter])
+        J += mtimes([(X[10:13] - x_ref[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13])])
+
         p = vertcat(x0,x_ref)
 
         # Solver Design
-        nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle, eta_target), 'f': J, 'g': vertcat(*g), 'p': p}
-        #nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
+        #nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle, eta_target), 'f': J, 'g': vertcat(*g), 'p': p}
+        nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
 
         opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes', 'ipopt.max_iter': 100, 'ipopt.tol': 1e-4, 'ipopt.acceptable_tol': 1e-3, 'ipopt.constr_viol_tol': 1e-4}
 
@@ -202,12 +207,12 @@ class MPCController:
 
         # Solver Bounds, Parameters, and Initial States Definition
         arg = {}
-        arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon), np.zeros(self.n)))
-        #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon))) # To test without \eta
-        arg["lbx"] = np.concatenate((lbx_u,lbx_xi, lbx_eta))
-        arg["ubx"] = np.concatenate((ubx_u,ubx_xi, ubx_eta))
-        #arg["lbx"] = np.concatenate((lbx_u,lbx_xi)) # To test without \eta
-        #arg["ubx"] = np.concatenate((ubx_u,ubx_xi)) # To test without \eta
+        #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon), np.zeros(self.n)))
+        arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon))) # To test without \eta
+        #arg["lbx"] = np.concatenate((lbx_u,lbx_xi, lbx_eta))
+        #arg["ubx"] = np.concatenate((ubx_u,ubx_xi, ubx_eta))
+        arg["lbx"] = np.concatenate((lbx_u,lbx_xi)) # To test without \eta
+        arg["ubx"] = np.concatenate((ubx_u,ubx_xi)) # To test without \eta
         arg["lbg"] = [0, 0] * self.p_horizon
         arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon  
         #arg["lbg"] = [0] * self.p_horizon  # To test without one of obstacle constraints
