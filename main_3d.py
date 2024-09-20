@@ -1,3 +1,5 @@
+## Translation and Path Following Scenario ##
+
 import numpy as np
 import matplotlib.pyplot as plt
 from src.controllers.mpc_controller_3d import MPCController
@@ -20,12 +22,12 @@ u_max = 1 # Upper Thrust Bound
 # MPC Parameters
 dt_MPC = 1
 T_horizon = 12 # Prediction Horizon = T_horizon / dt_MPC
-c_horizon = 3 # Control Horizon
+c_horizon = 2 # Control Horizon
 Q = 10 * np.eye(13) # State Weighting Matrix
-#Q[6:10,:] = 0
+Q[6:10,:] = 0
 R = 1 * np.eye(8) # Control Weighting matrix
 P = 100 * np.eye(13) # Terminal Cost Weighting Matrix
-#P[6:10,:] = 0
+P[6:10,:] = 0
 MPC_freq = 1
 
 # Simulation parameters
@@ -33,8 +35,8 @@ simulation_time = 300  # Total simulation time in seconds
 dt_sim = 1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
-#x0[0] = 0.1
 x0[6:10] = euler_to_quaternion(0,0,0)
+x0[10:13] = [0, 1e-24, 0]
 
 # Static Reference Scenario Parameters
 x_ref_static = np.zeros(13) 

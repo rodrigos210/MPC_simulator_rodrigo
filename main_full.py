@@ -1,9 +1,9 @@
-## Obstacle Avoidance Scenario ##
-# Tuned
+## Merge of Obstacle avoidance and entry angle scenarios ##
+# Not working
 
 import numpy as np
 import matplotlib.pyplot as plt
-from src.controllers.mpc_controller_obstacle import MPCController
+from src.controllers.mpc_controller_full import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
 from src.util.quat2eul import quaternion_to_euler
@@ -40,7 +40,7 @@ Q[10:13,10:13] = 1e5 * np.eye(3)
 #Q[5,5] = 0
 #Q[2,2] = 0
 #Q[3:5,3:5] = 1
-Q[6:10,:] = 1
+Q[6:10,:] = 0
 R = 1e3 * np.eye(8)   # Control Weighting Matrix
 P = 1e4* np.eye(13) # Terminal Cost Weighting Matrix
 P[6:10,:] = 0
@@ -59,7 +59,7 @@ predicted_states = np.zeros((num_steps, c_horizon, 13)) # Initialization for pre
 predicted_inputs = np.zeros((num_steps, c_horizon, 8))
 
 # Obstacle Parameters
-x_obstacle = [7.5, 7.5, 0]
+x_obstacle = [6, 6, 0]
 r_obstacle = 0.5
 
 # Static Reference Scenario Parameters
@@ -112,7 +112,7 @@ xi_evolution = [] # Obstacle Marging Slack Variable Evolution
 eta_evolution = [] # Terminal Cost Slack Variable Evolution
 
 def main():
-    controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, x_obstacle, r_obstacle, rho, r_spacecraft, vertices)
+    controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, x_obstacle, r_obstacle, rho, r_spacecraft)
     u_guess = np.zeros((c_horizon * 8, 1))
 
     # Simulate the system
@@ -143,7 +143,6 @@ def main():
 
         inputs[t, :] = u[0, :]
         u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
-        #u_guess = np.tile(np.zeros(8), (c_horizon, 1)).reshape(c_horizon * 8, 1)
         states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
         
 def plots_scenario():
@@ -218,6 +217,8 @@ def plots_scenario():
     plt.plot(states[:, 0], states[:, 1])
     x_ref_evolution = np.array(x_ref_evolution)
     plt.plot(x_ref_evolution[:, 0], x_ref_evolution[:, 1],"--")
+    plt.plot([x_ref_static[0], x_ref_static[0] + 1], [x_ref_static[1], x_ref_static[1] + 1], 'r--')
+    plt.plot([x_ref_static[0], x_ref_static[0] - 1], [x_ref_static[1], x_ref_static[1] + 1], 'r--')
     body = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
     circle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
     circle_exterior = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
@@ -248,7 +249,7 @@ def plots_scenario():
     plt.figure(figsize=(8,6))
     plt.plot(states[:, 0], states_euler[:, 0])
     plt.xlabel('x')
-    plt.ylabel('yaw (deg)')
+    plt.ylabel('yaw')
     plt.grid()
     plt.show() 
 
@@ -259,7 +260,6 @@ def animate_trajectory():
     obstacle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
     obstacle_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', fill=True)
     margin_of_the_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_spacecraft, color='#B7B6B6', fill=False)
-    
     ax.add_patch(margin_of_the_margin)
     ax.add_patch(obstacle_margin)
     ax.add_patch(obstacle)
@@ -309,7 +309,7 @@ if __name__ == "__main__":
     main()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     plots_scenario()
-    animate_trajectory()
+    #animate_trajectory()
     
     
 

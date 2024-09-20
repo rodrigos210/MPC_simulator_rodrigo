@@ -10,26 +10,26 @@ class MPCController:
         self.u_max = u_max
 
         # States Variables Initialization
-        x = MX.sym('x')
-        y = MX.sym('y')
-        z = MX.sym('z')
-        x_dot = MX.sym('x_dot')
-        y_dot = MX.sym('y_dot')
-        z_dot = MX.sym('z_dot')
-        q0 = MX.sym('q0')
-        q1 = MX.sym('q1')
-        q2 = MX.sym('q2')
-        q3 = MX.sym('q3')
-        omega1 = MX.sym('omega1')
-        omega2 = MX.sym('omega2')
-        omega3 = MX.sym('omega3')
+        x = SX.sym('x')
+        y = SX.sym('y')
+        z = SX.sym('z')
+        x_dot = SX.sym('x_dot')
+        y_dot = SX.sym('y_dot')
+        z_dot = SX.sym('z_dot')
+        q0 = SX.sym('q0')
+        q1 = SX.sym('q1')
+        q2 = SX.sym('q2')
+        q3 = SX.sym('q3')
+        omega1 = SX.sym('omega1')
+        omega2 = SX.sym('omega2')
+        omega3 = SX.sym('omega3')
 
         # State Vector Concatenation
         states = vertcat(x, y, z, x_dot, y_dot, z_dot, q0, q1, q2, q3, omega1, omega2, omega3)
         self.n = states.size1()
 
         # Control Variables Initialization
-        u = MX.sym('u', 8)
+        u = SX.sym('u', 8)
         controls = u
         self.m = controls.size1()
 
@@ -93,8 +93,8 @@ class MPCController:
         dynamics = vertcat(x_dot, y_dot, z_dot, x_ddot, y_ddot, z_ddot, q0_dot, q1_dot, q2_dot, q3_dot, omega1_dot, omega2_dot, omega3_dot)
 
         # Initial and Target State 
-        x_ref = MX.sym('x_ref', 13)
-        x0 = MX.sym('x0', 13)
+        x_ref = SX.sym('x_ref', 13)
+        x0 = SX.sym('x0', 13)
 
         # Quaternion Matrix to calculate its variation
         quat_A = vertcat(
@@ -119,11 +119,11 @@ class MPCController:
         F = Function('F', [states, controls], [next_state])
 
         # Quaternions Update (not functional yet)
-        next_quaternions = mtimes(cos(0.5 * norm_2(omegas) * dt) * MX.eye(4) + (1/norm_2(omegas)) * sin(0.5 * norm_2(omegas) * dt) * Omega, quat)
-        # next_quaternions = mtimes(MX.eye(4) + 0.5 * Omega * dt, quat)
+        next_quaternions = mtimes(cos(0.5 * norm_2(omegas) * dt) * SX.eye(4) + (1/norm_2(omegas)) * sin(0.5 * norm_2(omegas) * dt) * Omega, quat)
+        # next_quaternions = mtimes(SX.eye(4) + 0.5 * Omega * dt, quat)
         F_quat = Function('F_quat', [states, controls], [next_quaternions])  
 
-        U = MX.sym('U', self.m, self.c_horizon)
+        U = SX.sym('U', self.m, self.c_horizon)
         X = x0 # Initial State
         J = 0 # Cost
         
