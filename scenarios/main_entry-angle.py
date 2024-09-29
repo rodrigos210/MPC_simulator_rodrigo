@@ -3,13 +3,21 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from datetime import datetime
 from src.controllers.mpc_controller_entry_angle import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from src.util.eul2quat import euler_to_quaternion
 from src.util.quat2eul import quaternion_to_euler
 from matplotlib.animation import FuncAnimation
 import time
+
+# Start Timer
 start_time = time.time()
+
+# Flags for plotting
+plt_save = False # Save the plots
+plt_show = True # Show the plots
 
 # Constants
 mass = 1 #[kg]
@@ -24,10 +32,6 @@ u_max = 1 # Upper Thrust Bound
 dt_MPC = 1
 T_horizon = 13 # Prediction Horizon = T_horizon / dt_MPC
 c_horizon = 4 # Control Horizon
-# Q = np.diag([1e2, 1e2, 0,
-#              1, 1, 1,
-#              10, 10, 10, 10,
-#              1, 1, 1])
 Q = 1e1 * np.eye(13) # State Weighting Matrix #1e1
 # #Q[1,1] = 1e7
 Q[3,3] = 1e4 #1e3
@@ -97,7 +101,7 @@ states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
 cost_evolution=[]
 constraint_evolution = []
 
-def main():
+def simulation():
     controller = MPCController(T_horizon, c_horizon, mass, I, dx, dy, dt_MPC, Q, R, P, u_min, u_max, entry_radius, rho)
     u_guess = np.zeros((c_horizon * 8, 1))
     # Simulate the system
@@ -121,14 +125,57 @@ def main():
         #u_guess = np.tile(np.zeros(8), (c_horizon, 1)).reshape(c_horizon * 8, 1)
         states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
         
+def save_simulation_parameters(filename):
+    params = {
+        "mass": mass,
+        "Ixx": Ixx,
+        "Iyy": Iyy,
+        "Izz": Izz,
+        "Thrust bounds": [u_min, u_max],
+        "MPC Horizon": T_horizon,
+        "Control Horizon": c_horizon,
+        "State Weighting Matrix Q": Q,
+        "Control Weighting Matrix R": R,
+        "Terminal Cost Weighting Matrix P": P,
+        "rho (Obstacle Marging Slack)": rho,
+        "dt_mpc": dt_MPC,
+        "simulation_time": simulation_time,
+        "dt_sim": dt_sim,
+        "Initial state x0": x0,
+        "Static reference": x_ref_static,
+        "Entry radius": entry_radius
+    }
+
+    with open(filename, 'w') as file:
+        for key, value in params.items():
+            file.write(f"{key}: {value}\n")
+
+def output_directory_creation():
+    # Get the script's name without the extension
+    scenario_name = os.path.splitext(os.path.basename(__file__))[0]
+
+    # Create a folder name based on scenario name and current date-time
+    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_folder = os.path.join('outputs', f"{scenario_name}_{current_time}")
+
+    # Create the directory if it doesn't exist
+    if plt_save:
+        os.makedirs(output_folder, exist_ok=True)
+    return output_folder
+
+def simulation_results_generation(output_folder):
     
-def plots_scenario():
-    # Plotting
+        # Ensure the output folder exists
+    
+    # Save the parameters in a .txt file inside the folder
+    if plt_save:
+        os.makedirs(output_folder, exist_ok=True)
+        save_simulation_parameters(os.path.join(output_folder, "simulation_parameters.txt"))
+
+    # Define time arrays for plotting
     time = np.linspace(0, simulation_time, num_steps + 1)
-    x_ref_evolution = []
-    
-    for t in range(num_steps):
-        x_ref_evolution.append(target_dynamics(t))
+    time_inputs = np.linspace(0, simulation_time - dt_sim, num_steps)
+    time_cost = np.linspace(0, simulation_time - dt_sim, len(cost_evolution))
 
     plt.figure(figsize=(12, 8))
 
@@ -141,6 +188,9 @@ def plots_scenario():
     plt.ylabel('States')
     plt.legend()
     plt.grid()
+
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'state_plot.png'))
 
     # Plot inputs
     plt.figure(figsize=(12, 8))
@@ -162,6 +212,9 @@ def plots_scenario():
     plt.grid()
     plt.tight_layout()
 
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'inputs_plot.png'))
+
     # Plot cost history
     plt.figure(figsize=(12, 8))
     time_cost = np.linspace(0, simulation_time - dt_sim, len(cost_evolution))
@@ -171,28 +224,13 @@ def plots_scenario():
     plt.title('Cost Evolution')
     plt.grid()
 
-    # # Plot obstacle margin slack history
-    # plt.figure(figsize=(12, 8))
-    # time_xi = np.linspace(0, simulation_time - dt_sim, len(xi_evolution))
-    # plt.plot(time_xi, xi_evolution)
-    # plt.xlabel('Time [s]')
-    # plt.ylabel('Slack Variable Value')
-    # plt.title('Slack Variable Evolution')
-    # plt.grid()
-
-    # # Plot terminal cost slack history
-    # plt.figure(figsize=(12, 8))
-    # time_xi = np.linspace(0, simulation_time - dt_sim, len(eta_evolution))
-    # plt.plot(time_xi, eta_evolution)
-    # plt.xlabel('Time [s]')
-    # plt.ylabel('Slack Variable Value')
-    # plt.title('Terminal Cost Slack Variable Evolution')
-    # plt.grid()
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'cost_evolution_plot.png'))
 
     # Plot trajectory
     plt.figure(figsize=(8, 6))
     plt.plot(states[:, 0], states[:, 1])
-    x_ref_evolution = np.array(x_ref_evolution)
+    x_ref_evolution = np.array([target_dynamics(t) for t in range(num_steps)])
     plt.plot(x_ref_evolution[:, 0], x_ref_evolution[:, 1],"--")
     plt.plot([x_ref_static[0], x_ref_static[0] + 1], [x_ref_static[1], x_ref_static[1] + 1], 'r--')
     plt.plot([x_ref_static[0], x_ref_static[0] - 1], [x_ref_static[1], x_ref_static[1] + 1], 'r--')
@@ -201,6 +239,9 @@ def plots_scenario():
     plt.ylabel('y')
     plt.title('Trajectory')
     plt.grid()
+
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'trajectory_plot.png'))
 
     # Plot quaternions
     plt.figure(figsize=(8,6))
@@ -213,6 +254,9 @@ def plots_scenario():
     plt.grid()
     plt.show() 
 
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'quaternion_plot.png'))
+
     # Plot yaw times x
     plt.figure(figsize=(8,6))
     plt.plot(states[:, 0], states_euler[:, 0])
@@ -221,7 +265,20 @@ def plots_scenario():
     plt.grid()
     plt.show() 
 
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'yaw_vs_x_plot.png'))
+
+    if plt_show:
+        plt.show()
+
 if __name__ == "__main__":
-    main()
+    simulation()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
-    plots_scenario()
+    output_folder = output_directory_creation()
+    simulation_results_generation(output_folder)
+
+def run():
+    simulation()
+    print("Process finished --- %s seconds ---" % (time.time() - start_time))
+    output_folder = output_directory_creation()
+    simulation_results_generation(output_folder)

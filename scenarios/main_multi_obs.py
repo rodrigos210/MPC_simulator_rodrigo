@@ -414,7 +414,8 @@ if __name__ == "__main__":
 def run():
     simulation()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
-    #plots_scenario()
+    output_folder = output_directory_creation()
+    simulation_results_generation(output_folder)
     
     
 

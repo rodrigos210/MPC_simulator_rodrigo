@@ -115,24 +115,11 @@ class MPCController:
         f = Function('f', [states, controls], [dynamics])
 
         ## Discretization 
-        # RK4
-        # k1 = f(states, controls)
-        # k2 = f(states + 0.5 * dt * k1, controls)
-        # k3 = f(states + 0.5 * dt * k2, controls)
-        # k4 = f(states + dt * k3, controls)
-        # next_state = states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
-        # F = Function('F', [states, controls], [next_state])
-
         # # Euler Forward
         next_state = states + dt * f(states, controls)
         F = Function('F', [states, controls], [next_state])
         next_quaternions = quaternion_update_ca(states[6:10], states[10:13], dt)
-        F_quat = Function('F_quat', [states, controls], [next_quaternions]) 
-
-        # # Quaternions Update (not functional yet)
-        # next_quaternions = mtimes(cos(0.5 * norm_2(omegas) * dt) * SX.eye(4) + (1/(norm_2(omegas) + 1e-8)) * sin(0.5 * norm_2(omegas) * dt) * Omega, quat)
-        # # next_quaternions = mtimes(SX.eye(4) + 0.5 * Omega * dt, quat)
-        # F_quat = Function('F_quat', [states, controls], [next_quaternions])  
+        F_quat = Function('F_quat', [states, controls], [next_quaternions])   
 
         U = SX.sym('U', self.m, self.c_horizon)
         X = x0 # Initial State
@@ -174,9 +161,21 @@ class MPCController:
             #entry_constraint1 = (X[1] - (X[0] - x_ref[0]) - 9.8) * heaviside(distance_to_obstacle - entry_radius)
             #entry_constraint1 = (distance_to_obstacle - entry_radius) * heaviside(X[1] - (X[0] - x_ref[0]) - 9.8) 
             #entry_constraint2 = (distance_to_obstacle - entry_radius) * heaviside(X[1] + (X[0] - x_ref[0]) - 9.8)
-            #entry_constraint3 = (X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1]-0.2)) * custom_heaviside(entry_radius - distance_to_obstacle)
-            entry_constraint3 = (X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1]-0.2)) 
-            #entry_constraint3 = (distance_to_obstacle - entry_radius) * custom_heaviside(X[1] - fabs((X[0] - x_ref[0])) - 9.9)
+            #entry_constraint3 = (X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1]-0.2)) * custom_heaviside(distance_to_obstacle - entry_radius)
+            #entry_constraint3 = (X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1] - 0.2)) 
+
+            # entry_constraint4 = if_else(distance_to_obstacle > entry_radius, 0, X[1] - (x_ref[1]))
+            # entry_constraint5 = if_else(distance_to_obstacle > entry_radius, 0, (X[1] - (X[0] - x_ref[0]) - (x_ref[1])))
+            # entry_constraint6 = if_else(distance_to_obstacle > entry_radius, 0, (X[1] + (X[0] - x_ref[0]) - (x_ref[1])))
+
+            entry_constraint4 =  X[1] - (x_ref[1])
+            entry_constraint5 = (X[1] - (X[0] - x_ref[0]) - (x_ref[1]))
+            entry_constraint6 = (X[1] + (X[0] - x_ref[0]) - (x_ref[1]))
+            entry_constraint7 = (X[1] - (X[2] - x_ref[2]) - (x_ref[1]))
+            entry_constraint8 = (X[1] + (X[2] - x_ref[2]) - (x_ref[1]))
+
+            
+            #entry_constraint3 = (distance_to_obstacle - entry_radius) * custom_heaviside(X[1] - fabs((X[0] - x_ref[0])) - 9.8)
             #entry_constraint3 = if_else(distance_to_obstacle - entry_radius < 0, X[1] - fabs(X[0] - x_ref[0]) - 9.8, 0)
             #entry_constraint3 = if_else(X[1] - fabs(X[0] - x_ref[0]) - 9.8 > 0, 1e-24, (distance_to_obstacle - entry_radius))
             #entry_constraint1 = (X[1] - (X[0] - x_ref[0]) - 9.8 + xi1[k]) * heaviside(entry_radius - distance_to_obstacle)
@@ -190,7 +189,12 @@ class MPCController:
             #entry_constraint2 = if_else(distance_to_obstacle - entry_radius < 0, X[1] + (X[0] - x_ref[0]) - 9.8, 0)
             # g.append(entry_constraint1)
             # g.append(entry_constraint2)
-            g.append(entry_constraint3)
+            #g.append(entry_constraint3)
+            g.append(entry_constraint4)
+            g.append(entry_constraint5)
+            g.append(entry_constraint6)
+            g.append(entry_constraint7)
+            g.append(entry_constraint8)
 
             J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost
             J += mtimes([U_k.T, R, U_k]) # Input Cost
@@ -204,9 +208,9 @@ class MPCController:
     
         # Terminal Cost
         quat_err_ter = mtimes(quat_A, vertcat(X[6:10]))
-        J += mtimes([(X[0:6] - x_ref[0:6] + eta_target[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6] + eta_target[0:6])])
+        J += mtimes([(X[0:6] - (x_ref[0:6] + eta_target[0:6])).T, P[0:6,0:6], (X[0:6] - (x_ref[0:6] + eta_target[0:6]))])
         J += mtimes([(quat_err_ter + eta_target[6:10]).T, P[6:10,6:10], (quat_err_ter + eta_target[6:10])])
-        J += mtimes([(X[10:13] - x_ref[10:13] + eta_target[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13] + eta_target[10:13])])
+        J += mtimes([(X[10:13] - (x_ref[10:13] + eta_target[10:13])).T, P[10:13,10:13], (X[10:13] - (x_ref[10:13] + eta_target[10:13]))])
         p = vertcat(x0,x_ref)
 
         # Without ETA
@@ -263,8 +267,8 @@ class MPCController:
         
         # Initial guess and bounds for the solver
         arg = {}
-        #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.n)))
         arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.n)))
+        #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.n)))
         #arg["x0"] = u_guess.flatten()
         #arg["lbx"] = np.concatenate((lbx_u, lbx_xi))
         #arg["ubx"] = np.concatenate((ubx_u, ubx_xi))
@@ -273,10 +277,12 @@ class MPCController:
         #arg["lbx"] = lbx_u
         #arg["ubx"] = ubx_u
         arg["p"] = np.concatenate((x0, x_ref))
-        arg["lbg"] = [0] * self.p_horizon
-        arg["ubg"] = [float('inf')] * self.p_horizon
-        #arg["lbg"] = [0, 0] * self.p_horizon
-        #arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon
+        #arg["lbg"] = [0] * self.p_horizon
+        #arg["ubg"] = [float('inf')] * self.p_horizon
+        # arg["lbg"] = [0, 0] * self.p_horizon
+        # arg["ubg"] = [float('inf'), float('inf')] * self.p_horizon
+        arg["lbg"] = [0, 0, 0, 0, 0] * self.p_horizon
+        arg["ubg"] = [float('inf'), float('inf'), float('inf'), float('inf'), float('inf')] * self.p_horizon
 
         # Solve the problem
         res = self.solver(**arg)
@@ -290,4 +296,4 @@ class MPCController:
         cost_iter.append(float(res["f"]))
         constraint_iter.append(res_g)
 
-        return u_opt[0, :], cost_iter, constraint_iter
+        return u_opt, cost_iter, constraint_iter
