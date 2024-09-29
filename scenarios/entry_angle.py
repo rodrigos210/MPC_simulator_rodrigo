@@ -16,7 +16,7 @@ import time
 start_time = time.time()
 
 # Flags for plotting
-plt_save = False # Save the plots
+plt_save = True # Save the plots
 plt_show = True # Show the plots
 
 # Constants
