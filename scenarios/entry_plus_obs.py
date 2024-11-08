@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 import os
 import time
 from datetime import datetime
-from src.controllers.mpc_controller_full import MPCController
+from src.controllers.mpc_full import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
-from src.util.quat2eul import quaternion_to_euler
+from src.util.quat2eul import np_quaternion_to_euler
 from src.util.eul2quat import euler_to_quaternion
 from src.util.quaternion_rotation import quaternion_to_rotation_matrix_numpy
 
@@ -16,8 +16,8 @@ from src.util.quaternion_rotation import quaternion_to_rotation_matrix_numpy
 start_time = time.time()
 
 # Flags for plotting
-plt_save = True # Save the plots
-plt_show = False # Show the plots
+plt_save = False # Save the plots
+plt_show = True # Show the plots
 
 # Constants
 mass = 1 #[kg]
@@ -27,7 +27,7 @@ f_thruster = 1 # Maximum Thrust [N]
 dx, dy = 1, 1 # Distance from the CoM to the Thrusters [m]
 u_min, u_max = 0, 1 # Thrust Bounds
 L = 1 # Length of the Robot (L x L)
-r_spacecraft = 0.5 * (L * np.sqrt(2)) # For approximating the shape of the sc to a c
+r_spacecraft = 0.5 * (L * np.sqrt(2)) # For approximating the shape of the sc to a circle
 x_obs = [5, 6, 0]
 r_obs = 0.5
 
@@ -50,12 +50,12 @@ Q[6:10,:] = 0 #0
 R = 1e-1 * np.eye(8)   # Control Weighting Matrix #1e0
 P = 1e1* np.eye(13) # Terminal Cost Weighting Matrix #1e1
 P[6:10,:] = 0 #0
-rho = 1e5 # Obstacle Marging Slack Variable Weight #1e3
-sigma = 1e3
+rho = 1e3 # Obstacle Marging Slack Variable Weight #1e3
+sigma = 1e2
 mpc_freq = 1
 
 # Simulation parameters
-simulation_time = 600  # Total simulation time in seconds
+simulation_time = 400  # Total simulation time in seconds
 dt_sim = 0.1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
@@ -111,7 +111,7 @@ states_euler = np.zeros((num_steps + 1, 3))
 
 # Set initial state
 states[0, :] = x0
-states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
+states_euler[0, :] = np_quaternion_to_euler(states[0, 6:10])
 cost_evolution=[]
 xi_evolution = [] # Obstacle Marging Slack Variable Evolution
 eta_evolution = [] # Terminal Cost Slack Variable Evolution
@@ -147,8 +147,9 @@ def simulation():
             vertices_inertial.append(vertice_inertial)
 
         inputs[t, :] = u[0,:]
-        u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
-        states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
+        #u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
+        u_guess = np.array(u[0:c_horizon,:]).reshape(c_horizon * 8, 1)
+        states_euler[t + 1, :] = np_quaternion_to_euler(x_next[6:10])
 
 def save_simulation_parameters(filename):
     params = {
@@ -380,14 +381,11 @@ if __name__ == "__main__":
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
     simulation_results_generation(output_folder)
-
-    #animate_trajectory()
+    animate_trajectory()
 
 def run():
     simulation()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
     simulation_results_generation(output_folder)
-    
-    
-
+    animate_trajectory()

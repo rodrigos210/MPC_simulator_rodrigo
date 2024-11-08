@@ -1,7 +1,6 @@
 from casadi import *
 from src.util.quaternion_inverse import quaternion_inverse
 from src.util.quaternion_update import quaternion_update_ca
-from src.util.custom_heaviside import custom_heaviside
 
 class MPCController:
     def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max, entry_radius, rho):
@@ -135,61 +134,12 @@ class MPCController:
 
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
 
-            vel_sc = X[3:6]
-            rot_states = vertcat(
-            horzcat(1-2*X[8]**2-2*X[9]**2, 2*X[7]*X[8]-2*X[6]*X[9], 2*X[7]*X[9]+2*X[6]*X[8]),
-            horzcat(2*X[7]*X[8]+2*X[6]*X[9], 1-2*X[7]**2-2*X[9]**2, 2*X[8]*X[9]-2*X[6]*X[7]),
-            horzcat(2*X[7]*X[9]-2*X[6]*X[8], 2*X[8]*X[9]+2*X[6]*X[7], 1-2*X[7]**2-2*X[8]**2)
-            )
-
-            pos_delta = X[0:3] - x_ref[0:3] # Position Deviation
-            distance_to_obstacle = norm_2(pos_delta) # Distance to the Obstacle
-
-        
-            vel_sc_inertial = mtimes(rot_states, vel_sc)
-
-            #y_constraint = X[1] - x_ref[1] + xi[k]
-            slope = (X[1] - x_ref[1])/(X[0] - x_ref[0])
-            #angle_constraint = cone_angle - atan(slope) + xi[k]
-            angle = atan(slope)
-            #angle_constraint = sin(cone_angle) - sin(angle) + xi[k]
-
-            #entry_constraint = if_else(distance_to_obstacle > entry_radius, 0, X[1] - fabs(X[0] - x_ref[0]) - (9.8) + xi[k])
-           # entry_constraint = if_else(distance_to_obstacle > entry_radius, 0, X[1] - fabs(X[0] - x_ref[0]) - (9.8))
-            #entry_constraint = if_else(distance_to_obstacle > entry_radius, 0, X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1]) + xi[k])
-            #entry_constraint = X[1] - fabs(X[0] - x_ref[0]) - 9.8
-            #entry_constraint1 = (X[1] - (X[0] - x_ref[0]) - 9.8) * heaviside(distance_to_obstacle - entry_radius)
-            #entry_constraint1 = (distance_to_obstacle - entry_radius) * heaviside(X[1] - (X[0] - x_ref[0]) - 9.8) 
-            #entry_constraint2 = (distance_to_obstacle - entry_radius) * heaviside(X[1] + (X[0] - x_ref[0]) - 9.8)
-            #entry_constraint3 = (X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1]-0.2)) * custom_heaviside(distance_to_obstacle - entry_radius)
-            #entry_constraint3 = (X[1] - fabs(X[0] - x_ref[0]) - (x_ref[1] - 0.2)) 
-
-            # entry_constraint4 = if_else(distance_to_obstacle > entry_radius, 0, X[1] - (x_ref[1]))
-            # entry_constraint5 = if_else(distance_to_obstacle > entry_radius, 0, (X[1] - (X[0] - x_ref[0]) - (x_ref[1])))
-            # entry_constraint6 = if_else(distance_to_obstacle > entry_radius, 0, (X[1] + (X[0] - x_ref[0]) - (x_ref[1])))
-
             entry_constraint4 =  X[1] - (x_ref[1])
             entry_constraint5 = (X[1] - (X[0] - x_ref[0]) - (x_ref[1]))
             entry_constraint6 = (X[1] + (X[0] - x_ref[0]) - (x_ref[1]))
             entry_constraint7 = (X[1] - (X[2] - x_ref[2]) - (x_ref[1]))
             entry_constraint8 = (X[1] + (X[2] - x_ref[2]) - (x_ref[1]))
 
-            
-            #entry_constraint3 = (distance_to_obstacle - entry_radius) * custom_heaviside(X[1] - fabs((X[0] - x_ref[0])) - 9.8)
-            #entry_constraint3 = if_else(distance_to_obstacle - entry_radius < 0, X[1] - fabs(X[0] - x_ref[0]) - 9.8, 0)
-            #entry_constraint3 = if_else(X[1] - fabs(X[0] - x_ref[0]) - 9.8 > 0, 1e-24, (distance_to_obstacle - entry_radius))
-            #entry_constraint1 = (X[1] - (X[0] - x_ref[0]) - 9.8 + xi1[k]) * heaviside(entry_radius - distance_to_obstacle)
-            #entry_constraint2 = (X[1] + (X[0] - x_ref[0]) - 9.8) * heaviside(distance_to_obstacle - entry_radius)
-            #entry_constraint2 = (X[1] + (X[0] - x_ref[0]) - 9.8 + xi2[k]) * heaviside(entry_radius - distance_to_obstacle)
-            #entry_constraint1 = (X[1] - (X[0] - x_ref[0]) - 9.8) 
-            #entry_constraint2 = (X[1] + (X[0] - x_ref[0]) - 9.8) 
-            #entry_constraint1 = if_else(X[1] - (X[0] - x_ref[0]) - 9.8 > 0, 1e-24, (distance_to_obstacle - entry_radius))
-            #entry_constraint2 = if_else(X[1] + (X[0] - x_ref[0]) - 9.8 > 0, 1e-24, (distance_to_obstacle - entry_radius))
-            #entry_constraint1 = if_else(distance_to_obstacle - entry_radius < 0, X[1] - (X[0] - x_ref[0]) - 9.8, 0)
-            #entry_constraint2 = if_else(distance_to_obstacle - entry_radius < 0, X[1] + (X[0] - x_ref[0]) - 9.8, 0)
-            # g.append(entry_constraint1)
-            # g.append(entry_constraint2)
-            #g.append(entry_constraint3)
             g.append(entry_constraint4)
             g.append(entry_constraint5)
             g.append(entry_constraint6)
@@ -288,8 +238,6 @@ class MPCController:
         res = self.solver(**arg)
         u_opt = res['x'].full().reshape(-1)[:self.c_horizon*self.m].reshape(self.c_horizon, self.m)
         res_g = res['g'].full()
-        
-        #print(res_g)
 
         # Evolutions Tracking
         xi_optimal.append(res['x'].full().reshape(-1)[self.c_horizon*self.m:])

@@ -1,14 +1,15 @@
 ## Docking through defined entry-angle scenario ##
-# Not tuned 
+# First [Simplified] Version
+# See entry_angle_v2 for a more complex version
 
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
-from src.controllers.mpc_controller_entry_angle import MPCController
+from src.controllers.mpc_entry_angle import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from src.util.eul2quat import euler_to_quaternion
-from src.util.quat2eul import quaternion_to_euler
+from src.util.quat2eul import np_quaternion_to_euler
 from matplotlib.animation import FuncAnimation
 import time
 
@@ -16,7 +17,7 @@ import time
 start_time = time.time()
 
 # Flags for plotting
-plt_save = True # Save the plots
+plt_save = False # Save the plots
 plt_show = True # Show the plots
 
 # Constants
@@ -97,7 +98,7 @@ def target_dynamics(t):
 
 # Set initial state
 states[0, :] = x0
-states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
+states_euler[0, :] = np_quaternion_to_euler(states[0, 6:10])
 cost_evolution=[]
 constraint_evolution = []
 
@@ -123,7 +124,7 @@ def simulation():
         u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
         #u_guess = np.tile(u, (c_horizon, 1))
         #u_guess = np.tile(np.zeros(8), (c_horizon, 1)).reshape(c_horizon * 8, 1)
-        states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
+        states_euler[t + 1, :] = np_quaternion_to_euler(x_next[6:10])
         
 def save_simulation_parameters(filename):
     params = {

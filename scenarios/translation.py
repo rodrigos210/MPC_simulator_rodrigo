@@ -4,10 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
-from src.controllers.mpc_controller_3d import MPCController
+from src.controllers.mpc_3d import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from src.util.eul2quat import euler_to_quaternion
-from src.util.quat2eul import quaternion_to_euler
+from src.util.quat2eul import np_quaternion_to_euler
 from matplotlib.animation import FuncAnimation
 import time
 
@@ -84,7 +84,7 @@ def target_dynamics(t):
 
 # Set initial state
 states[0, :] = x0
-states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
+states_euler[0, :] = np_quaternion_to_euler(states[0, 6:10])
 cost_evolution=[]
 
 def simulation():
@@ -105,7 +105,7 @@ def simulation():
         states[t + 1, :] = x_next
         inputs[t, :] = u
         u_guess = np.tile(u, (c_horizon, 1)).reshape(c_horizon * 8, 1)
-        states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
+        states_euler[t + 1, :] = np_quaternion_to_euler(x_next[6:10])
 
 def save_simulation_parameters(filename):
     params = {

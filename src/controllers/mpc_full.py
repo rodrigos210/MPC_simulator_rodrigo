@@ -42,10 +42,10 @@ class MPCController:
         eta_target = SX.sym('eta_target', self.n) # Terminal Cost Position Slack Variable
 
         zeta_entry1 = SX.sym('zeta_entry1', self.p_horizon)
-        zeta_entry2 = SX.sym('zeta_entry1', self.p_horizon)
-        zeta_entry3 = SX.sym('zeta_entry1', self.p_horizon)
-        zeta_entry4 = SX.sym('zeta_entry1', self.p_horizon)
-        zeta_entry5 = SX.sym('zeta_entry1', self.p_horizon)
+        zeta_entry2 = SX.sym('zeta_entry2', self.p_horizon)
+        zeta_entry3 = SX.sym('zeta_entry3', self.p_horizon)
+        zeta_entry4 = SX.sym('zeta_entry4', self.p_horizon)
+        zeta_entry5 = SX.sym('zeta_entry5', self.p_horizon)
 
         # Quaternion Rotation Matrix
         Rot = vertcat(
@@ -179,7 +179,7 @@ class MPCController:
             quat_err = mtimes(quat_A, quaternion_inverse(X[6:10])) # Quaternion Deviation
 
             x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
-            J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost 
+            J += mtimes([x_delta.T, Q, x_delta]) * (1 - 1/distance_to_target**2)# State Deviation Cost 
             J += mtimes([U_k.T, R, U_k]) # Input Cost 
             J += rho * xi_obstacle[k]**2 # Obstacle Margin Constraint Cost
             J += sigma * (zeta_entry1[k] ** 2 + zeta_entry2[k] ** 2 + zeta_entry3[k] ** 2 + zeta_entry4[k] ** 2 + zeta_entry5[k] ** 2) * (1/distance_to_target**2)

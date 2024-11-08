@@ -5,10 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
-from src.controllers.mpc_controller_multi_obs import MPCController
+from src.controllers.mpc_multi_obs import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
-from src.util.quat2eul import quaternion_to_euler
+from src.util.quat2eul import np_quaternion_to_euler
 from src.util.eul2quat import euler_to_quaternion
 from src.util.quaternion_rotation import quaternion_to_rotation_matrix_numpy
 import time
@@ -17,8 +17,8 @@ import time
 start_time = time.time()
 
 # Flags for plotting
-plt_save = True # Save the plots
-plt_show = False # Show the plots
+plt_save = False # Save the plots
+plt_show = True # Show the plots
 
 # Constants
 mass = 1 #[kg]
@@ -119,7 +119,7 @@ states_euler = np.zeros((num_steps + 1, 3))
 
 # Set initial state
 states[0, :] = x0
-states_euler[0, :] = quaternion_to_euler(states[0, 6:10])
+states_euler[0, :] = np_quaternion_to_euler(states[0, 6:10])
 cost_evolution=[]
 xi_evolution = [] # Obstacle Marging Slack Variable Evolution
 eta_evolution = [] # Terminal Cost Slack Variable Evolution
@@ -157,7 +157,7 @@ def simulation():
         inputs[t, :] = u[0, :]
         u_guess = np.tile(u[0,:], (c_horizon, 1)).reshape(c_horizon * 8, 1)
         #u_guess = np.tile(np.zeros(8), (c_horizon, 1)).reshape(c_horizon * 8, 1)
-        states_euler[t + 1, :] = quaternion_to_euler(x_next[6:10])
+        states_euler[t + 1, :] = np_quaternion_to_euler(x_next[6:10])
 
 def save_simulation_parameters(filename):
     params = {
