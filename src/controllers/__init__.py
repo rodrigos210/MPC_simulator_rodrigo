@@ -5,3 +5,4 @@ from .mpc_full import *
 from .mpc_entry_angle_v2 import *
 from .mpc_full import *
 from .mpc_multistage import *
+from .mpc_rhapsody import *
