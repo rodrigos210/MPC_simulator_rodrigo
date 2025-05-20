@@ -1,4 +1,4 @@
-## Rotating Target chasing scenario ##
+## Entry Angle v2 scenario with obstacle avoidance ##
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,7 +6,7 @@ from matplotlib.patches import Arc
 import os
 import time
 from datetime import datetime
-from src.controllers.mpc_entry_angle_v2 import MPCController
+from src.controllers.mpc_dock_align import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
 from src.util.quat2eul import np_quaternion_to_euler
@@ -24,12 +24,12 @@ plt_show = True # Show the plots
 # Constants
 mass = 15 #[kg]
 f_thruster = 1 # Maximum Thrust [N]
-dx, dy = 1, 1 # Distance from the CoM to the Thrusters [m]
+dx, dy = 0.12, 0.12 # Distance from the CoM to the Thrusters [m]
 u_min, u_max = 0, 1 # Thrust Bounds
 L = 0.2828 # Length of the Robot (L x L) 
 r_chaser = r_target = 0.5 * (L * np.sqrt(2)) # For approximating the shape of the sc to a circle
 chaser_vector_C = np.array([1,0,0]) # Chaser Unity Direction Vector in the
-target_vector_T = np.array([0,-1,0]) # Target Unity Direction Vector in the N
+target_vector_T = np.array([1.0, 0,0]) # Target Unity Direction Vector in the N
 Ixx, Iyy = 1, 1
 Izz = 0.5 * mass * (r_chaser**2) # Approximated to a cylinder shape
 I = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]])
@@ -63,9 +63,9 @@ probe = np.array([
 # Droge (Female component of the dokcking) dimensions and coordinates
 drogue_w = 0.1
 drogue = np.array([
-    [-drogue_w, r_target, 0],
-    [drogue_w, r_target, 0],
-    [0, L/4, 0],
+    [-r_target, -drogue_w, 0],
+    [-r_target, drogue_w, 0],
+    [-L/4, 0, 0],
 ])
 
 # MPC Parameters
@@ -81,21 +81,27 @@ Q[4,4] = 1e2 #1e4
 Q[6:10,6:10] = 0 * np.eye(4) #0
 Q[10:13,:] = 0
 R = 1 * 1e6 * np.eye(8)   # Control Weighting Matrix #1e0
-P = 1e2 * np.eye(13) # Terminal Cost Weighting Matrix #1e1
+P = 1e3 * np.eye(13) # Terminal Cost Weighting Matrix #1e1
 #P[6:10,6:10] = 0 * np.eye(4) #0
 #P[10:13,10:13] = 0 * np.eye(3)
 sigma = 1e2
-gamma = 1e1 * np.eye(3)
+gamma = 1e3 * np.eye(3)
+rho = 1e1
 mpc_freq = 1
 
 # Simulation parameters
-simulation_time = 300  # Total simulation time in seconds
+simulation_time = 150  # Total simulation time in seconds
 dt_sim = 0.1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
-x0[0:2] = [0.6, 0.6]
-x0[6:10] = euler_to_quaternion(0,0,0)
+x0[0:2] = [0, 2]
+x0[6:10] = euler_to_quaternion(-np.pi/3,0,0)
 x0[10:13] = [0.0, 1e-24, 0] # one of the terms of the angular velocity still has to be > 0 due to division by 0 errors
+
+# Obstacles Parameters
+x_obstacle = [1.5, 1.5, 0]
+r_obstacle = r_chaser
+
 
 predicted_states = np.zeros((num_steps, c_horizon, 13)) # Initialization for predicted state and inputs evolution
 predicted_inputs = np.zeros((num_steps, c_horizon, 8))
@@ -113,7 +119,7 @@ x_ref_dyn_initial[0:3] = [3, 2, 0]
 x_ref_dyn_initial[6:10] = euler_to_quaternion(0,0,0)
 x_ref_dyn_initial[10:13] = [0, 1e-24, 0.0000]
 x_docking_initial = x_ref_dyn_initial.copy()
-x_docking_initial[0:3] = [3, 2+r_target+r_chaser, 0]
+x_docking_initial[0:3] = [3-r_target-r_chaser, 2, 0]
 
 # Path Following Condition (True -> Static Reference Target, False -> Path Following Scenario)
 static_reference = True
@@ -149,7 +155,7 @@ eta_evolution = [] # Terminal Cost Slack Variable Evolution
 theta_evolution = []
 
 def simulation():
-    controller = MPCController(t_horizon, c_horizon, mass, I, dx, dy, dt_mpc, Q, R, P, u_min, u_max, sigma, r_chaser, r_target, chaser_vector_C, target_vector_T, gamma)
+    controller = MPCController(t_horizon, c_horizon, mass, I, dx, dy, dt_mpc, Q, R, P, u_min, u_max, sigma, r_chaser, r_target, chaser_vector_C, target_vector_T, gamma, x_obstacle, r_obstacle, rho)
     u_guess = np.zeros((c_horizon * 8, 1))
 
     # Simulate the system
@@ -264,6 +270,34 @@ def simulation_results_generation(output_folder):
     if plt_save:
         plt.savefig(os.path.join(output_folder, 'vel_plot.png'))
 
+    # Create figure and axis
+    fig, ax1 = plt.subplots()
+
+    # Plot x and y on primary y-axis
+    ax1.plot(time, states[:, 0], label='x', color="#00aff5")
+    ax1.plot(time, states[:, 1], label='y', color="#E21612")
+    ax1.set_xlabel('Time [s]')
+    ax1.set_ylabel('States (m)')
+    #ax1.legend(loc='upper left')
+    ax1.grid()
+
+    # Add secondary y-axis for theta in degrees
+    def rad_to_deg(x):
+        return np.degrees(x)
+
+    def deg_to_rad(x):
+        return np.radians(x)
+
+    ax2 = ax1.secondary_yaxis('right', functions=(rad_to_deg, deg_to_rad))
+    ax2.set_ylabel('Theta [°]')
+
+    # Plot theta on primary axis but with a different scale
+    #ax1.plot(time, states[:, 4], label='theta (radians)', color="#23ce6b")
+    ax1.plot(time, states_euler[:, 0], label='yaw', color="#23ce6b")
+
+    plt.title("State Evolution with Angle in Degrees")
+    plt.show()
+
     # Plot inputs
     plt.figure(figsize=(12, 8))
     for i in range(1, 9):
@@ -287,7 +321,7 @@ def simulation_results_generation(output_folder):
 
     # Plot cost history
     plt.figure(figsize=(12, 8))
-    plt.plot(time_cost, cost_evolution, color = '#5F758E')
+    plt.plot(time_cost, cost_evolution)
     plt.xlabel('Time [s]')
     plt.ylabel('Cost')
     plt.title('Cost Evolution')
@@ -321,16 +355,12 @@ def simulation_results_generation(output_folder):
     # Plot trajectory
     plt.figure(figsize=(8, 6))
     plt.plot(states[:, 0], states[:, 1], color = "k",label='Trajectory')
-    #inner_body_chaser = plt.Polygon(states[0:2], closed=True, color='#28536B', alpha=1, label='Chaser Agent') #darkgray #alpha1
-    outer_body_chaser = plt.Circle((states[0, 0], states[0, 1]), radius= r_chaser, fill = True, color= '#7EA8BE', alpha = 0.3,label = 'Chaser Agent')
-    target_body = plt.Circle(x_ref_static[0:2], radius=r_target, fill = True, color= 'Grey', alpha = 0.3, label = 'Target Agent') #k
-    #chaser_probe, = ax.plot([],[], 'k-', label="Probe")
-    #circle = plt.Circle(x_ref_dyn_initial[0:2], radius = 2 * (r_chaser + r_target), fill = False, color = 'k')
-    arc = Arc(x_ref_dyn_initial[0:2], 2 * (r_chaser + r_target), 2 * (r_chaser + r_target), theta1=135.0, theta2=45.0)
-
-    #plt.gca().add_patch(inner_body_chaser)
-    plt.gca().add_patch(outer_body_chaser)
-    plt.gca().add_patch(target_body)
+    x_ref_evolution = np.array([target_dynamics(t) for t in range(num_steps)])
+    plt.plot(x_ref_evolution[:, 0], x_ref_evolution[:, 1], "--", label='Reference Path')
+    # plt.plot([x_ref[0], x_ref[0] + 1], [x_ref[1], x_ref[1] + 1], 'r--', label='Static Reference')
+    # plt.plot([x_ref[0], x_ref[0] - 1], [x_ref[1], x_ref[1] + 1], 'r--')
+    # dot = plt.Circle((x_ref[0], x_ref[1]), 0.01, color='r', fill=True)
+    # plt.gca().add_patch(dot)
     plt.xlabel('x')
     plt.ylabel('y')
     plt.title('Trajectory')
@@ -402,16 +432,16 @@ def animate_trajectory():
     
     ax.add_patch(chaser_probe)
     #ax.add_patch(circle)
-    ax.add_patch(arc)
+    #ax.add_patch(arc)
     
     
     
     # Set plot limits
-    ax.set_xlim(0, 4)
+    ax.set_xlim(-1, 4)
     ax.set_ylim(0, 4)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-    ax.set_title('Entry Cone Scenario')
+    ax.set_title('Dock Alignment Scenario')
     ax.grid(True, linewidth = 0.5)
     ax.set_aspect('equal', adjustable='box')
     ax.legend()
@@ -526,6 +556,7 @@ def animate_trajectory():
 
 
 
+
 if __name__ == "__main__":
 
     simulation()
@@ -539,4 +570,4 @@ def run():
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
     simulation_results_generation(output_folder)
-    #animate_trajectory()
+    animate_trajectory()

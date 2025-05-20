@@ -24,7 +24,7 @@ plt_show = True # Show the plots
 # Constants
 mass = 15 #[kg]
 f_thruster = 1 # Maximum Thrust [N]
-dx, dy = 1, 1 # Distance from the CoM to the Thrusters [m]
+dx, dy = 0.12, 0.12 # Distance from the CoM to the Thrusters [m]
 u_min, u_max = 0, 1 # Thrust Bounds
 L = 0.2828 # Length of the Robot (L x L) 
 r_chaser = r_target = 0.5 * (L * np.sqrt(2)) # For approximating the shape of the sc to a circle
@@ -522,7 +522,7 @@ def animate_trajectory():
         return trajectory, inner_body_chaser, outer_body_chaser, chaser_probe, line1, line2, target_body, target_drogue
 
 
-    anim = FuncAnimation(fig, update, frames=np.arange(1, num_steps), init_func=init, blit=True, interval = 7)
+    anim = FuncAnimation(fig, update, frames=np.arange(1, num_steps), init_func=init, blit=True, interval = 5)
     
     if plt_show:
         plt.show()

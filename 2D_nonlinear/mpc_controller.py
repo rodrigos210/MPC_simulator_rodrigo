@@ -9,19 +9,19 @@ class MPCController:
         self.u_max = u_max
 
         # States Variables Initialization
-        x = MX.sym('x')
-        x_dot = MX.sym('x_dot')
-        y = MX.sym('y')
-        y_dot = MX.sym('y_dot')
-        theta = MX.sym('theta')
-        theta_dot = MX.sym('theta_dot')
+        x = SX.sym('x')
+        x_dot = SX.sym('x_dot')
+        y = SX.sym('y')
+        y_dot = SX.sym('y_dot')
+        theta = SX.sym('theta')
+        theta_dot = SX.sym('theta_dot')
 
         # State Vector Concatenation
         states = vertcat(x, x_dot, y, y_dot, theta, theta_dot)
         self.n = states.size1()
 
         # Control Variables Initialization
-        u = MX.sym('u', 8)
+        u = SX.sym('u', 8)
         controls = u
         self.m = controls.size1()
 
@@ -42,8 +42,8 @@ class MPCController:
         )
 
         # Initial and Target State 
-        x_ref = MX.sym('x_ref', 6)
-        x0 = MX.sym('x0', 6)
+        x_ref = SX.sym('x_ref', 6)
+        x0 = SX.sym('x0', 6)
 
         # Continuous Dynamics Function
         f = Function('f', [states, controls], [dynamics])
@@ -62,7 +62,7 @@ class MPCController:
         # next_state = states + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
         # F = Function('F', [states, controls], [next_state])
 
-        U = MX.sym('U', self.m, self.c_horizon)
+        U = SX.sym('U', self.m, self.c_horizon)
         X = x0 # Initial State
         J = 0
         

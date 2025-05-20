@@ -17,7 +17,7 @@ import time
 start_time = time.time()
 
 # Flags for plotting
-plt_save = False # Save the plots
+plt_save = True # Save the plots
 plt_show = True # Show the plots
 
 # Constants
@@ -25,7 +25,7 @@ mass = 1 #[kg]
 Ixx, Iyy, Izz = 1, 1, 1
 I = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]])
 f_thruster = 1 # Maximum Thrust [N]
-dx, dy = 0.5, 0.5 # Distance from the CoM to the Thrusters [m]
+dx, dy = 0.5, 0.5 # Distance from the CoM0 to the Thrusters [m]
 u_min = 0 # Lower Thrust Bound
 u_max = 1 # Upper Thrust Bound
 L = 1 # Length of the Robot (L x L)
@@ -288,23 +288,23 @@ def simulation_results_generation(output_folder):
 
     # Plot trajectory
     plt.figure(figsize=(8, 6))
-    plt.plot(states[:, 0], states[:, 1])
+    plt.plot(states[:, 0], states[:, 1], color = "k")
     x_ref_evolution = np.array([target_dynamics(t) for t in range(num_steps)])
     x_ref_evolution = np.array(x_ref_evolution)
     plt.plot(x_ref_evolution[:, 0], x_ref_evolution[:, 1],"--")
     body1 = plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1, color='#303030', fill=True)
-    circle1= plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1 * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    circle1= plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1 * 2, color='#B7B6B6', linestyle='dotted' , fill=False)
     circle_exterior1 = plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1 * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
     body2 = plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2, color='#303030', fill=True)
-    circle2= plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2 * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    circle2= plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2 * 2, color='#B7B6B6', linestyle='dotted' , fill=False)
     circle_exterior2 = plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2 * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
-    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.01, color = 'r', fill = True)
+    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.01, color = 'r', fill = True, label = "Target Point")
 
     plt.gca().add_patch(dot)
-    plt.gca().add_patch(circle_exterior1)
+    #plt.gca().add_patch(circle_exterior1)
     plt.gca().add_patch(circle1)
     plt.gca().add_patch(body1)
-    plt.gca().add_patch(circle_exterior2)
+    #plt.gca().add_patch(circle_exterior2)
     plt.gca().add_patch(circle2)
     plt.gca().add_patch(body2)
     
@@ -345,49 +345,57 @@ def simulation_results_generation(output_folder):
     
 def animate_trajectory():
     fig, ax = plt.subplots(figsize=(8, 6))
-    
+    time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+
     # Plot the obstacle
     body1 = plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1, color='#303030', fill=True)
-    circle1= plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1 * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    circle1= plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1 * 2, color='#B7B6B6', linestyle='dotted' , fill=False)
     circle_exterior1 = plt.Circle((x_obstacle1[0], x_obstacle1[1]), r_obstacle1 * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
     body2 = plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2, color='#303030', fill=True)
-    circle2= plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2 * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    circle2= plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2 * 2, color='#B7B6B6', linestyle='dotted' , fill=False)
     circle_exterior2 = plt.Circle((x_obstacle2[0], x_obstacle2[1]), r_obstacle2 * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
-    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.01, color = 'r', fill = True)
+    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.1, color = 'r', fill = True, label = "Target Point")
+    dummy_states = np.zeros(2)
+    outer_body_chaser = plt.Circle(dummy_states[0:2], radius= r_spacecraft, fill = True, color= 'grey',label = 'Chaser Agent') #k, 0.1
 
     plt.gca().add_patch(dot)
-    plt.gca().add_patch(circle_exterior1)
+
     plt.gca().add_patch(circle1)
     plt.gca().add_patch(body1)
-    plt.gca().add_patch(circle_exterior2)
+   
     plt.gca().add_patch(circle2)
     plt.gca().add_patch(body2)
+    ax.add_patch(outer_body_chaser)
 
     # Initialize the spacecraft's trajectory plot and the square body plot
-    trajectory, = ax.plot([], [], 'b-', label='Trajectory')
+    trajectory, = ax.plot([], [], 'k-', label='Trajectory')
     
     # Dummy vertices to initialize the Polygon
     dummy_vertices = np.zeros((len(vertices), 2))
     body = plt.Polygon(dummy_vertices, closed=True, color='r', alpha=0.5, label='Spacecraft Body')
-    ax.add_patch(body)
+    #ax.add_patch(body)
     
     # Set plot limits
-    ax.set_xlim(-1, 15)
-    ax.set_ylim(-1, 15)
+    ax.set_xlim(-1, 11)
+    ax.set_ylim(-1, 11)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-    ax.set_title('Spacecraft Trajectory and Body Animation')
+    ax.set_title('Multi Obstacle Scenario')
     ax.grid(True)
+    ax.set_aspect('equal', adjustable='box')
     ax.legend()
 
     def init():
         trajectory.set_data([], [])
         body.set_xy(dummy_vertices)
-        return trajectory, body,
+        outer_body_chaser.set_center((dummy_states[0], dummy_states[1]))
+        time_text.set_text('')
+        return trajectory, outer_body_chaser, time_text,
 
     def update(frame):
         # Update trajectory
         trajectory.set_data(states[:frame, 0], states[:frame, 1])
+        time_text.set_text(f'Time: {frame * dt_sim:.1f} s')
         
         # Compute the new vertices in the inertial frame
         vertices_inertial = []
@@ -396,20 +404,26 @@ def animate_trajectory():
             vertices_inertial.append(vertice_inertial[:2])
         
         body.set_xy(vertices_inertial)
-        return trajectory, body,
+        chaser_center = [states[frame,0], states[frame,1]]
+        outer_body_chaser.set_center(chaser_center)
+        return trajectory, time_text, outer_body_chaser,
 
-    ani = FuncAnimation(fig, update, frames=num_steps, init_func=init, blit=True, repeat=False)
+    anim = FuncAnimation(fig, update, frames=num_steps, init_func=init, blit=True, repeat=False, interval = 50)
     
-    # Display the animation
-    plt.show()
+    if plt_show:
+        plt.show()
+
+    if plt_save:
+        output_folder = output_directory_creation()
+        anim.save(os.path.join(output_folder, 'trajectory_animation.mp4'), writer='ffmpeg')
+
 
 if __name__ == "__main__":
     simulation()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
     simulation_results_generation(output_folder)
-
-    #animate_trajectory()
+    animate_trajectory()
 
 def run():
     simulation()

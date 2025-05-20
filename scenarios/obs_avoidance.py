@@ -17,7 +17,7 @@ import time
 start_time = time.time()
 
 # Flags for plotting
-plt_save = False # Save the plots
+plt_save = True # Save the plots
 plt_show = True # Show the plots
 
 # Constants
@@ -48,11 +48,11 @@ Q[10:13,10:13] = 1e5 * np.eye(3) # 1e5
 #Q[5,5] = 0
 #Q[2,2] = 0
 #Q[3:5,3:5] = 1
-Q[6:10,:] = 1 # 1
-R = 1e3 * np.eye(8)   # Control Weighting Matrix # 1e3
+Q[6:10,:] = 0 # 1
+R = 1e1 * np.eye(8)   # Control Weighting Matrix # 1e3
 P = 1e4* np.eye(13) # Terminal Cost Weighting Matrix #1e4
 P[6:10,:] = 0 #0
-rho = 1e10 # Obstacle Marging Slack Variable Weight # 1e10
+rho = 1e3 # Obstacle Marging Slack Variable Weight # 1e10
 MPC_freq = 1 #1
 
 # Simulation parameters
@@ -252,7 +252,7 @@ def simulation_results_generation(output_folder):
     # Plot cost history
     plt.figure(figsize=(12, 8))
     time_cost = np.linspace(0, simulation_time - dt_sim, len(cost_evolution))
-    plt.plot(time_cost, cost_evolution)
+    plt.plot(time_cost, cost_evolution, color = "#5F758E")
     plt.xlabel('Time [s]')
     plt.ylabel('Cost')
     plt.title('Cost Evolution')
@@ -287,18 +287,19 @@ def simulation_results_generation(output_folder):
 
     # Plot trajectory
     plt.figure(figsize=(8, 6))
-    plt.plot(states[:, 0], states[:, 1])
+    plt.plot(states[:, 0], states[:, 1], color = 'k')
     x_ref_evolution = np.array([target_dynamics(t) for t in range(num_steps)])
     plt.plot(x_ref_evolution[:, 0], x_ref_evolution[:, 1],"--")
-    body = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
-    circle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    body = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', linestyle = 'dotted', fill=True)
+    circle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', linestyle='dashed' , fill=False)
     circle_exterior = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_spacecraft, color='#B7B6B6', linestyle='dotted' , fill=False)
-    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.01, color = 'r', fill = True)
+    dot = plt.Circle((x_ref_static[0],x_ref_static[1]), 0.1, color = '#ee3432', fill = True)
 
-    plt.gca().add_patch(dot)
-    plt.gca().add_patch(circle_exterior)
+   
+    #plt.gca().add_patch(circle_exterior)
     plt.gca().add_patch(circle)
     plt.gca().add_patch(body)
+    plt.gca().add_patch(dot)
     
     plt.xlabel('x')
     plt.ylabel('y')
@@ -338,63 +339,79 @@ def simulation_results_generation(output_folder):
 
 def animate_trajectory():
     fig, ax = plt.subplots(figsize=(8, 6))
-    
-    # Plot the obstacle
+    time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+    target_point = ax.plot(x_ref_static[0], x_ref_static[1], 'ro', label='Target Point')[0]
+    # Plot the obstacle and margins
     obstacle = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
-    obstacle_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', fill=True)
+    obstacle_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', fill=False, linestyle = "dashed")
     margin_of_the_margin = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_spacecraft, color='#B7B6B6', fill=False)
-    
-    ax.add_patch(margin_of_the_margin)
+    #ax.add_patch(margin_of_the_margin)
     ax.add_patch(obstacle_margin)
     ax.add_patch(obstacle)
 
-    # Initialize the spacecraft's trajectory plot and the square body plot
-    trajectory, = ax.plot([], [], 'b-', label='Trajectory')
-    
-    # Dummy vertices to initialize the Polygon
-    dummy_vertices = np.zeros((len(vertices), 2))
-    body = plt.Polygon(dummy_vertices, closed=True, color='r', alpha=0.5, label='Spacecraft Body')
+    # Initialize trajectory line
+    trajectory, = ax.plot([], [], 'k-', label='Trajectory')
+
+    # Initialize spacecraft body as a circle
+    body = plt.Circle((0, 0), r_spacecraft/2, color='gray', alpha=0.5, label='Spacecraft Body')
     ax.add_patch(body)
-    
-    # Set plot limits
-    ax.set_xlim(-1, 15)
-    ax.set_ylim(-1, 15)
+
+    # Orientation line and dot
+    orientation_line, = ax.plot([], [], 'k-', lw=1.5)
+    orientation_dot, = ax.plot([], [], 'ko', markersize=3)
+
+    # Set plot limits and labels
+    ax.set_xlim(-1, 11)
+    ax.set_ylim(-1, 11)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-    ax.set_title('Spacecraft Trajectory and Body Animation')
+    ax.set_title('Example I - Low Weight on Safety Margin')
     ax.grid(True)
     ax.legend()
 
     def init():
         trajectory.set_data([], [])
-        body.set_xy(dummy_vertices)
-        return trajectory, body,
+        body.center = (0, 0)
+        orientation_line.set_data([], [])
+        orientation_dot.set_data([], [])
+        time_text.set_text('')
+        return trajectory, time_text, body, orientation_line, orientation_dot, target_point,
 
     def update(frame):
-        # Update trajectory
+        x, y = states[frame, 0], states[frame, 1]
+        yaw = states_euler[frame, 0]  # theta (yaw)
+        time_text.set_text(f'Time: {frame * dt_sim:.1f} s')
+        # Update trajectory line
         trajectory.set_data(states[:frame, 0], states[:frame, 1])
-        
-        # Compute the new vertices in the inertial frame
-        vertices_inertial = []
-        for vertice in vertices:
-            vertice_inertial = np.dot(quaternion_to_rotation_matrix_numpy(states[frame, 6:10]), vertice) + states[frame, 0:3]
-            vertices_inertial.append(vertice_inertial[:2])
-        
-        body.set_xy(vertices_inertial)
-        return trajectory, body,
 
-    ani = FuncAnimation(fig, update, frames=num_steps, init_func=init, blit=True, repeat=False)
-    
-    # Display the animation
-    plt.show()
+        # Update spacecraft circle position
+        body.center = (x, y)
 
+        # Orientation direction line
+        length = r_spacecraft * 0.5
+        x_end = x + length * np.cos(yaw)
+        y_end = y + length * np.sin(yaw)
+        orientation_line.set_data([x, x_end], [y, y_end])
+        orientation_dot.set_data([x_end], [y_end])  # Wrap scalars in a list
+
+        return trajectory, time_text, body, orientation_line, orientation_dot, target_point,
+
+    anim = FuncAnimation(fig, update, frames=np.arange(1, num_steps), init_func=init,
+                         blit=True, interval=50)
+
+    if plt_show:
+        plt.show()
+
+    if plt_save:
+        output_folder = output_directory_creation()
+        anim.save(os.path.join(output_folder, 'trajectory_animation.mp4'), writer='ffmpeg')
 
 if __name__ == "__main__":
     simulation()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
-    simulation_results_generation(output_folder)
-    #animate_trajectory()
+    #simulation_results_generation(output_folder)
+    animate_trajectory()
 
 def run():
     simulation()
@@ -403,6 +420,6 @@ def run():
     simulation_results_generation(output_folder)
     #animate_trajectory()
 
-    
-    
+
+
 

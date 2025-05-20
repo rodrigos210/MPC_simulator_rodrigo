@@ -8,3 +8,6 @@ def euler_to_quaternion(yaw, pitch, roll):
         q0 = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
 
         return [q0, q1, q2, q3]
+
+
+print(euler_to_quaternion(5,0,0))

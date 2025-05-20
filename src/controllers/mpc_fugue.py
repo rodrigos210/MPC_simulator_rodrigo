@@ -145,7 +145,7 @@ class MPCController:
             
             U_k = U[:, min(k, c_horizon-1)] # From the control horizon, U_k is set as U_c_horizon
             
-            target_delta = X[0:3] - (x_target[0:3])
+            target_delta = X[0:3] - (x_docking[0:3])
             distance_to_target = norm_2(target_delta)
 
             chaser_vector_T = pos_prime_rot_casadi(x_target[6], x_target[7], x_target[8], x_target[9], self.chase_vector_C[0], self.chase_vector_C[1], self.chase_vector_C[2])
@@ -170,17 +170,18 @@ class MPCController:
             #entry_constraint1 = pos_prime_rotated[1] + zeta_entry1[k]
             entry_constraint1 = 0
             #entry_constraint2 = pos_prime_rotated[1] - pos_prime_rotated[0] + zeta_entry2[k]
-            entry_constraint2_condition = pos_prime_rotated[1] - fabs(pos_prime_rotated[0]) 
+            #entry_constraint2_condition = pos_prime_rotated[1] - fabs(pos_prime_rotated[0]) 
+            entry_constraint2_condition = pos_prime_rotated[1] - pos_prime_rotated[0] 
+            entry_constraint3_condition = pos_prime_rotated[1] + pos_prime_rotated[0] 
 
-            entry_constraint2 = custom_heaviside(entry_constraint2_condition) * (distance_to_target - 2 * effective_target_radius) + zeta_entry2[k]
-            #entry_constraint2 = 0
+            entry_constraint2 = custom_heaviside(entry_constraint2_condition) * (distance_to_target - 2 * effective_target_radius)
+            entry_constraint3 = custom_heaviside(entry_constraint3_condition) * (distance_to_target - 2 * effective_target_radius)
+            
 
             #entry_constraint3 = pos_prime_rotated[1] + pos_prime_rotated[0] + zeta_entry3[k]
-            entry_constraint3 = 0
-            #entry_constraint4 = (pos_prime_rotated[1] - pos_prime_rotated[2] + zeta_entry4[k])
-            #entry_constraint5 = (pos_prime_rotated[1] + pos_prime_rotated[2] + zeta_entry5[k])
-            entry_constraint4 = 0
-            entry_constraint5 = 0
+            #entry_constraint3 = 0
+            entry_constraint4 = (pos_prime_rotated[1] - pos_prime_rotated[2] + zeta_entry4[k])
+            entry_constraint5 = (pos_prime_rotated[1] + pos_prime_rotated[2] + zeta_entry5[k])
 
             edge_constraint1 = 3.32 - X[1] - r_chaser
             edge_constraint2 = X[1] - r_chaser
@@ -197,31 +198,28 @@ class MPCController:
 
             obstacle_margin_constraint = distance_to_obstacle - effective__margin1_radius + xi_obstacle[k] # Outer Circle Constraint (SOFT)
             obstacle_constraint = distance_to_obstacle - effective_obstacle_radius # Obstacle Constraint (HARD)
-            
-            # Appending the constraints     
-            g.append(obstacle_constraint) 
-            g.append(obstacle_margin_constraint) 
+            #obstacle_constraint = 0
             
             # Appending Constraints
             
-            g.append(entry_constraint1)
+            #g.append(entry_constraint1)
             g.append(entry_constraint2)
             g.append(entry_constraint3)
-            g.append(entry_constraint4)
-            g.append(entry_constraint5)
+            #g.append(entry_constraint4)
+            #g.append(entry_constraint5)
 
             g.append(edge_constraint1)
             g.append(edge_constraint2)
             g.append(edge_constraint3)
             g.append(edge_constraint4)
 
-            
+            g.append(obstacle_constraint)
         
 
             effective_target_radius = r_target + r_chaser
 
             #pos_vel_delta = X[0:6] - x_ref[0:6] # Position and Velocity Deviation
-            pos_delta = X[0:3] - x_docking[0:3]
+            pos_delta = X[0:3] - pos_docking[0:3]
             #pos_delta = X[0:3] - pos_docking
             vel_delta = X[3:6] - x_ref[3:6]
             omega_delta = X[10:13] - x_ref[10:13] # Angular Rate Deviation
@@ -231,14 +229,14 @@ class MPCController:
 
             
             #J += mtimes([(sqrt((X[0] - x_target[0])**2 + (X[1] - x_target[1])**2) - r_target).T, Q[0:2,0:2], (sqrt((X[0] - x_target[0])**2 + (X[1] - x_target[1])**2) - r_target)])
-            distance_to_target_squared = (X[0] - x_target[0])**2 + (X[1] - x_target[1])**2
-            J += mtimes([x_delta.T, Q, x_delta]) * (1/(distance_to_target))  # State Deviation Cost 
+            distance_to_target_squared = (X[0] - x_docking[0])**2 + (X[1] - x_docking[1])**2
+            J += mtimes([x_delta.T, Q, x_delta])*((distance_to_target_squared-1)/distance_to_target_squared)# #* (1/distance_to_target_squared) # State Deviation Cost 
             #J += mtimes([(distance_to_target_squared - r_target**2).T, Q[0:2,0:2], (distance_to_target_squared - r_target**2)])
 
             #J += sqrt((X[0] - x_target[0])**2 + (X[1] - x_target[1])**2 - r_target)**2 * Q[0:2,0:2]
-            J += mtimes([U_k.T, R, U_k])#Input Cost 
-            J += sigma * (zeta_entry1[k] ** 2 + zeta_entry2[k] ** 2 + zeta_entry3[k] ** 2 + zeta_entry4[k] ** 2 + zeta_entry5[k] ** 2) 
-            #J += gamma * nu_docking[k] * (1/distance_to_target**2)
+            J += mtimes([U_k.T, R, U_k]) #* 1*((distance_to_target_squared-1)/distance_to_target_squared)#Input Cost
+            #J += sigma * (zeta_entry1[k] ** 2 + zeta_entry2[k] ** 2 + zeta_entry3[k] ** 2 + zeta_entry4[k] ** 2 + zeta_entry5[k] ** 2) 
+            #J += gamma * nu_docking[k] * (1/distance_to_target**2)* ((distance_to_target_squared-1)/distance_to_target_squared + 1)
             #J += rho * xi_obstacle[k]**2 # Obstacle Margin Constraint Cost
             J += mtimes([(chaser_vector_N - target_vector_N).T , gamma, chaser_vector_N - target_vector_N]) * (1/(distance_to_target_squared))
 
@@ -265,25 +263,29 @@ class MPCController:
 
         p = vertcat(x_initial,x_ref, x_target, x_docking)
 
-        # Solver Design
-        #nlp = {'x': vertcat(reshape(U, -1, 1), eta_target, nu_docking), 'f': J, 'p': p, 'g': vertcat(*g)}
-        #nlp = {'x': vertcat(reshape(U, -1, 1), eta_target, zeta_entry1, zeta_entry2, zeta_entry3, zeta_entry4, zeta_entry5), 'f': J, 'p': p, 'g': vertcat(*g)}
-        nlp = {'x': vertcat(reshape(U, -1, 1), zeta_entry1, zeta_entry2, zeta_entry3, zeta_entry4, zeta_entry5), 'f': J, 'p': p, 'g': vertcat(*g)}
-        #nlp = {'x': vertcat(reshape(U, -1, 1), xi_obstacle), 'f': J, 'g': vertcat(*g), 'p': p}
-        #nlp = {'x': vertcat(reshape(U, -1, 1), eta_target), 'f': J, 'p' : p, 'g': vertcat(*g)}
+            # Create the NLP problem
+        # nlp = {'x': vertcat(reshape(U, -1, 1), reshape(xi_obstacle, -1, 1), reshape(zeta_entry1, -1, 1), 
+        #                     reshape(zeta_entry2, -1, 1), reshape(zeta_entry3, -1, 1),
+        #                     reshape(zeta_entry4, -1, 1), reshape(zeta_entry5, -1, 1), reshape(nu_docking, -1, 1)),
+        #     'f': J,
+        #     'g': vertcat(*g)}
+            
+        nlp = {'x': reshape(U, -1, 1),
+            'f': J,
+            'g': vertcat(*g),
+            'p': p}
+        
 
-        opts = {'ipopt.print_level': 0, 
-                'print_time': 0, 
-                'ipopt.sb': 'yes', 
-                'ipopt.max_iter': 100, 
-                'ipopt.tol': 1e-3, 
-                'ipopt.constr_viol_tol': 1e-4,
-                'ipopt.acceptable_constr_viol_tol': 1e-3, 
-                'ipopt.honor_original_bounds' : 'no',
-                'ipopt.bound_relax_factor': 0}
+        # Define solver options for SQP
+        opts = {
+            'qpsol': 'qpoases',       # Use qpOASES for solving QP subproblems (a popular choice for MPC)
+            'max_iter': 100,          # Maximum iterations for the SQP method
+            'print_time': False       # Reduce verbosity for cleaner output
+        }
 
-        self.solver = nlpsol('solver', 'ipopt', nlp, opts) # Solver Initiation with IPOPT
-        #self.solver = nlpsol('solver', 'sqpmethod', nlp) # Solver Initiation with SQP Method (NOT WORKING)
+        # Initialize the solver using SQP method
+        self.solver = nlpsol('solver', 'sqpmethod', nlp, opts)
+
 
     # Optimal Input Calculation
     def get_optimal_input(self, x0, x_ref, x_target, x_docking, u_guess):
@@ -309,14 +311,16 @@ class MPCController:
         arg = {}
         #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon), np.zeros(self.n)))
         #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.n), np.zeros(5 * self.p_horizon)))
-        arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(5 * self.p_horizon)))
+        arg["x0"] = (u_guess.flatten())
         #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.n), np.zeros(self.p_horizon)))
         #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.p_horizon))) # To test without \eta
         #arg["x0"] = np.concatenate((u_guess.flatten(), np.zeros(self.n))) # To test without \xi
         # arg["lbx"] = np.concatenate((lbx_u, lbx_eta, lbx_zeta))
         # arg["ubx"] = np.concatenate((ubx_u, ubx_eta, ubx_zeta))
-        arg["lbx"] = np.concatenate((lbx_u, lbx_zeta))
-        arg["ubx"] = np.concatenate((ubx_u, ubx_zeta))
+        # arg["lbx"] = np.concatenate((lbx_u, lbx_zeta))
+        # arg["ubx"] = np.concatenate((ubx_u, ubx_zeta))
+        arg["lbx"] = lbx_u
+        arg["ubx"] = ubx_u
         # arg["lbx"] = np.concatenate((lbx_u, lbx_eta, lbx_nu))
         # arg["ubx"] = np.concatenate((ubx_u, ubx_eta, ubx_nu))
         #arg["lbx"] = np.concatenate((lbx_u,lbx_xi)) # To test without \eta
@@ -326,8 +330,8 @@ class MPCController:
         arg["p"] = np.concatenate((x0, x_ref, x_target, x_docking))
         # arg["lbg"] = [0, 0, 0, 0, 0] * self.p_horizon
         # arg["ubg"] = [float('inf'),float('inf'),float('inf'), float('inf'), float('inf')] * self.p_horizon  
-        arg["lbg"] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] * self.p_horizon
-        arg["ubg"] = [float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf')] * self.p_horizon  
+        arg["lbg"] = [0, 0, 0, 0, 0, 0, 0] * self.p_horizon
+        arg["ubg"] = [float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf'),float('inf')] * self.p_horizon  
         
         
         # Solve the problem

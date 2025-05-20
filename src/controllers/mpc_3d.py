@@ -1,5 +1,6 @@
 from casadi import *
 from src.util.quaternion_inverse import quaternion_inverse
+from src.util.quaternion_multiplication import quaternion_product
 
 class MPCController:
     def __init__(self, time_horizon, c_horizon, mass, I, dx, dy, dt, Q, R, P, u_min, u_max):
@@ -133,20 +134,43 @@ class MPCController:
 
             pos_vel_delta = X[0:6] - x_ref[0:6] # Position and Velocity Deviation
             omega_delta = X[10:13] - x_ref[10:13] # Angular Rate Deviation
-            quat_err = mtimes(quat_A, vertcat(X[6:10])) # Quaternion Deviation
+            #quat_err = X[6:10] - x_ref[6:10]
+            #quat_err = quaternion_product(X[6:10], quaternion_inverse(x_ref[6:10]))
+            quat_err = quaternion_product(x_ref[6:10], quaternion_inverse(X[6:10]))
+            quat_delta = vertcat(1-quat_err[0], (norm_2(quat_err[1:])/9),(norm_2(quat_err[1:])/9),(norm_2(quat_err[1:])/9))
+            f = Function('f', [x_ref], [x_ref])
+            quat_dot_product = dot(X[6:10], x_ref[6:10])
+            quat_dot_product_clamped = fmax(fmin(quat_dot_product, 1), -1)
+            #quat_dot_product_clamped = fmin(fmax(quat_dot_product, 1), -1)
+            
 
-            x_delta = vertcat(pos_vel_delta, quat_err, omega_delta)
-            J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost
+            #quat_delta = 2 * acos(fabs(quat_dot_product_clamped))
+            quat_delta = 2 * pi - (2 * acos(quat_dot_product_clamped))
+
+            
+            #quat_err = mtimes(quat_A, vertcat(X[6:10])) # Quaternion Deviation
+
+            x_delta = vertcat(pos_vel_delta, quat_delta, omega_delta)
+            #J += mtimes([x_delta.T, Q, x_delta]) # State Deviation Cost
+            J += quat_delta ** 2 * (Q[6,6] + Q[7,7] + Q[8,8] + Q[9,9])
+          
+            J += mtimes([pos_vel_delta.T, Q[0:6,0:6], pos_vel_delta])
+            # J += (1-quat_err[0]) ** 2 * Q[6,6]
+            #J += norm_2(quat_err[1:]) * Q[7:10,7:10]
+            # J += sum1((quat_err[1:] ** 2) * diag(Q[7:10, 7:10]))
+            #J += fmin(norm_2(x_ref[6:10]-X[6:10]), norm_2(x_ref[6:10]+X[6:10])) * Q[6,6]
+            J += mtimes([omega_delta.T, Q[10:13, 10:13], omega_delta])
+
             J += mtimes([U_k.T, R, U_k]) # Input Cost
             
             X_next = F(X, U_k) # Next State Computation
             # X_next[6:10] = if_else(norm_2(omegas) == 0, X_next[6:10], F_quat(X, U_k))
-            quat_next = F_quat(X, U_k)
-            X_next[6:10] = X_next[6:10]/norm_2(X_next[6:10]) # Quaternions Normalization
+            X_next[6:10] = F_quat(X, U_k)
+            X_next[6:10] = X_next[6:10]/(norm_2(X_next[6:10]) + 1e-16) # Quaternions Normalization
             X = X_next # State Update
         
         # Terminal Cost
-        quat_err_ter = mtimes(quat_A, vertcat(X[6:10]))
+        quat_err_ter = quaternion_product(X[6:10], quaternion_inverse(x_ref[6:10]))
         J += mtimes([(X[0:6] - x_ref[0:6]).T, P[0:6,0:6], (X[0:6] - x_ref[0:6])])
         J += mtimes([quat_err_ter.T, P[6:10,6:10], quat_err_ter])
         J += mtimes([(X[10:13] - x_ref[10:13]).T, P[10:13,10:13], (X[10:13] - x_ref[10:13])])

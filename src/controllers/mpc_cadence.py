@@ -170,17 +170,24 @@ class MPCController:
             #entry_constraint1 = pos_prime_rotated[1] + zeta_entry1[k]
             entry_constraint1 = 0
             #entry_constraint2 = pos_prime_rotated[1] - pos_prime_rotated[0] + zeta_entry2[k]
-            entry_constraint2_condition = pos_prime_rotated[1] - fabs(pos_prime_rotated[0]) 
+            #entry_constraint2_condition = pos_prime_rotated[1] - fabs(pos_prime_rotated[0]) 
+            entry_constraint2_condition = pos_prime_rotated[1] - pos_prime_rotated[0] 
+            entry_constraint3_condition = pos_prime_rotated[1] + pos_prime_rotated[0] 
 
-            entry_constraint2 = custom_heaviside(entry_constraint2_condition) * (distance_to_target - 2 * effective_target_radius) + zeta_entry2[k]
-            #entry_constraint2 = 0
+            entry_constraint2 = custom_heaviside(entry_constraint2_condition) * (distance_to_target - 2 * effective_target_radius)
+            entry_constraint3 = custom_heaviside(entry_constraint3_condition) * (distance_to_target - 2 * effective_target_radius)
+            
 
             #entry_constraint3 = pos_prime_rotated[1] + pos_prime_rotated[0] + zeta_entry3[k]
-            entry_constraint3 = 0
-            #entry_constraint4 = (pos_prime_rotated[1] - pos_prime_rotated[2] + zeta_entry4[k])
-            #entry_constraint5 = (pos_prime_rotated[1] + pos_prime_rotated[2] + zeta_entry5[k])
-            entry_constraint4 = 0
-            entry_constraint5 = 0
+            #entry_constraint3 = 0
+            # entry_constraint4_condition = (pos_prime_rotated[1] - pos_prime_rotated[2] + zeta_entry4[k])
+            # entry_constraint5_condition = (pos_prime_rotated[1] + pos_prime_rotated[2] + zeta_entry5[k])
+            # entry_constraint4 = custom_heaviside(entry_constraint4_condition) * (distance_to_target - 2 * effective_target_radius)
+            # entry_constraint5 = custom_heaviside(entry_constraint5_condition) * (distance_to_target - 2 * effective_target_radius)
+            entry_constraint4 = (pos_prime_rotated[1] - pos_prime_rotated[2] + zeta_entry4[k])
+            entry_constraint5 = (pos_prime_rotated[1] + pos_prime_rotated[2] + zeta_entry5[k])
+            # entry_constraint4 = 0
+            # entry_constraint5 = 0
 
             edge_constraint1 = 3.32 - X[1] - r_chaser
             edge_constraint2 = X[1] - r_chaser
@@ -197,10 +204,7 @@ class MPCController:
 
             obstacle_margin_constraint = distance_to_obstacle - effective__margin1_radius + xi_obstacle[k] # Outer Circle Constraint (SOFT)
             obstacle_constraint = distance_to_obstacle - effective_obstacle_radius # Obstacle Constraint (HARD)
-            
-            # Appending the constraints     
-            g.append(obstacle_constraint) 
-            g.append(obstacle_margin_constraint) 
+            #obstacle_constraint = 0
             
             # Appending Constraints
             
@@ -215,14 +219,14 @@ class MPCController:
             g.append(edge_constraint3)
             g.append(edge_constraint4)
 
-            
+            g.append(obstacle_constraint)
         
 
             effective_target_radius = r_target + r_chaser
 
             #pos_vel_delta = X[0:6] - x_ref[0:6] # Position and Velocity Deviation
+            #pos_delta = X[0:3] - x_docking[0:3]
             pos_delta = X[0:3] - x_docking[0:3]
-            #pos_delta = X[0:3] - pos_docking
             vel_delta = X[3:6] - x_ref[3:6]
             omega_delta = X[10:13] - x_ref[10:13] # Angular Rate Deviation
             quat_err = mtimes(quat_A, quaternion_inverse(X[6:10])) # Quaternion Deviation
@@ -232,13 +236,13 @@ class MPCController:
             
             #J += mtimes([(sqrt((X[0] - x_target[0])**2 + (X[1] - x_target[1])**2) - r_target).T, Q[0:2,0:2], (sqrt((X[0] - x_target[0])**2 + (X[1] - x_target[1])**2) - r_target)])
             distance_to_target_squared = (X[0] - x_target[0])**2 + (X[1] - x_target[1])**2
-            J += mtimes([x_delta.T, Q, x_delta]) * (1/(distance_to_target))  # State Deviation Cost 
+            J += mtimes([x_delta.T, Q, x_delta]) #* ((distance_to_target_squared-1)/distance_to_target_squared) # State Deviation Cost 
             #J += mtimes([(distance_to_target_squared - r_target**2).T, Q[0:2,0:2], (distance_to_target_squared - r_target**2)])
 
             #J += sqrt((X[0] - x_target[0])**2 + (X[1] - x_target[1])**2 - r_target)**2 * Q[0:2,0:2]
-            J += mtimes([U_k.T, R, U_k])#Input Cost 
+            J += mtimes([U_k.T, R, U_k])#* 1*((distance_to_target_squared-1)/distance_to_target_squared)#Input Cost
             J += sigma * (zeta_entry1[k] ** 2 + zeta_entry2[k] ** 2 + zeta_entry3[k] ** 2 + zeta_entry4[k] ** 2 + zeta_entry5[k] ** 2) 
-            #J += gamma * nu_docking[k] * (1/distance_to_target**2)
+            #J += gamma * nu_docking[k] * (1/distance_to_target**2)* ((distance_to_target_squared-1)/distance_to_target_squared + 1)
             #J += rho * xi_obstacle[k]**2 # Obstacle Margin Constraint Cost
             J += mtimes([(chaser_vector_N - target_vector_N).T , gamma, chaser_vector_N - target_vector_N]) * (1/(distance_to_target_squared))
 

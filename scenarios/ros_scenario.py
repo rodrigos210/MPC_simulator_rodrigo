@@ -1,4 +1,4 @@
-## Rotating Target chasing scenario ##
+## Entry Angle v2 scenario with obstacle avoidance ##
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,7 +6,7 @@ from matplotlib.patches import Arc
 import os
 import time
 from datetime import datetime
-from src.controllers.mpc_entry_angle_v2 import MPCController
+from src.controllers.mpc_ros_version import MPCController
 from src.dynamics.dynamics_3d import rk4_step
 from matplotlib.animation import FuncAnimation
 from src.util.quat2eul import np_quaternion_to_euler
@@ -18,7 +18,7 @@ from src.util.quaternion_update import quaternion_update_np
 start_time = time.time()
 
 # Flags for plotting
-plt_save = True # Save the plots
+plt_save = False # Save the plots
 plt_show = True # Show the plots
 
 # Constants
@@ -81,21 +81,27 @@ Q[4,4] = 1e2 #1e4
 Q[6:10,6:10] = 0 * np.eye(4) #0
 Q[10:13,:] = 0
 R = 1 * 1e6 * np.eye(8)   # Control Weighting Matrix #1e0
-P = 1e2 * np.eye(13) # Terminal Cost Weighting Matrix #1e1
+P = 1e3 * np.eye(13) # Terminal Cost Weighting Matrix #1e1
 #P[6:10,6:10] = 0 * np.eye(4) #0
 #P[10:13,10:13] = 0 * np.eye(3)
 sigma = 1e2
 gamma = 1e1 * np.eye(3)
+rho = 1e1
 mpc_freq = 1
 
 # Simulation parameters
-simulation_time = 300  # Total simulation time in seconds
+simulation_time = 600  # Total simulation time in seconds
 dt_sim = 0.1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
 x0[0:2] = [0.6, 0.6]
 x0[6:10] = euler_to_quaternion(0,0,0)
 x0[10:13] = [0.0, 1e-24, 0] # one of the terms of the angular velocity still has to be > 0 due to division by 0 errors
+
+# Obstacles Parameters
+x_obstacle = [1.5, 1.5, 0]
+r_obstacle = r_chaser
+
 
 predicted_states = np.zeros((num_steps, c_horizon, 13)) # Initialization for predicted state and inputs evolution
 predicted_inputs = np.zeros((num_steps, c_horizon, 8))
@@ -115,25 +121,10 @@ x_ref_dyn_initial[10:13] = [0, 1e-24, 0.0000]
 x_docking_initial = x_ref_dyn_initial.copy()
 x_docking_initial[0:3] = [3, 2+r_target+r_chaser, 0]
 
-# Path Following Condition (True -> Static Reference Target, False -> Path Following Scenario)
-static_reference = True
 
-# Target x_ref definition
-def target_dynamics(t):
-
-    if static_reference == True:
-        x_ref = x_ref_static.copy()
-        x_target = x_ref.copy()
-        x_docking = x_docking_initial.copy()
-
-    else:
-        x_ref = x_ref_dyn_initial.copy()
-        x_target = x_ref.copy()
-        x_docking = x_docking_initial.copy()
-        x_target[6:10] = quaternion_update_np(x_ref_dyn_initial[6:10], x_ref_dyn_initial[10:13], t)
-        x_ref[10:13] = [0, 1e-24, 0] 
-        x_docking[0:3] = pos_prime_rot_numpy(x_target[6:10], x_docking[0:3])
-    return x_ref, x_target, x_docking
+x_ref = x_ref_static.copy()
+x_target = x_ref.copy()
+    
 
 # Storage for states and inputs
 states = np.zeros((num_steps + 1, 13))
@@ -149,17 +140,17 @@ eta_evolution = [] # Terminal Cost Slack Variable Evolution
 theta_evolution = []
 
 def simulation():
-    controller = MPCController(t_horizon, c_horizon, mass, I, dx, dy, dt_mpc, Q, R, P, u_min, u_max, sigma, r_chaser, r_target, chaser_vector_C, target_vector_T, gamma)
+    controller = MPCController(Q=Q, P=P)
     u_guess = np.zeros((c_horizon * 8, 1))
 
     # Simulate the system
     for t in range(num_steps):
-        x_ref, x_target, x_docking = target_dynamics(t)
+        
 
         theta_evolution.append(np_quaternion_to_euler(x_ref[6:10])[2])
         if t % int(1/(mpc_freq*dt_sim)) == 0:
             # Get the optimal control input
-            u, eta_optimal, cost_iter = controller.get_optimal_input(states[t, :], x_ref, x_target, x_docking, u_guess)
+            u, eta_optimal, cost_iter = controller.get_optimal_input(states[t, :], x_ref, u_guess)
             predicted_inputs[t, :, :] = u
             
             # Use the model to predict the future trajectory
@@ -287,7 +278,7 @@ def simulation_results_generation(output_folder):
 
     # Plot cost history
     plt.figure(figsize=(12, 8))
-    plt.plot(time_cost, cost_evolution, color = '#5F758E')
+    plt.plot(time_cost, cost_evolution)
     plt.xlabel('Time [s]')
     plt.ylabel('Cost')
     plt.title('Cost Evolution')
@@ -320,17 +311,18 @@ def simulation_results_generation(output_folder):
 
     # Plot trajectory
     plt.figure(figsize=(8, 6))
-    plt.plot(states[:, 0], states[:, 1], color = "k",label='Trajectory')
-    #inner_body_chaser = plt.Polygon(states[0:2], closed=True, color='#28536B', alpha=1, label='Chaser Agent') #darkgray #alpha1
-    outer_body_chaser = plt.Circle((states[0, 0], states[0, 1]), radius= r_chaser, fill = True, color= '#7EA8BE', alpha = 0.3,label = 'Chaser Agent')
-    target_body = plt.Circle(x_ref_static[0:2], radius=r_target, fill = True, color= 'Grey', alpha = 0.3, label = 'Target Agent') #k
-    #chaser_probe, = ax.plot([],[], 'k-', label="Probe")
-    #circle = plt.Circle(x_ref_dyn_initial[0:2], radius = 2 * (r_chaser + r_target), fill = False, color = 'k')
-    arc = Arc(x_ref_dyn_initial[0:2], 2 * (r_chaser + r_target), 2 * (r_chaser + r_target), theta1=135.0, theta2=45.0)
-
-    #plt.gca().add_patch(inner_body_chaser)
-    plt.gca().add_patch(outer_body_chaser)
-    plt.gca().add_patch(target_body)
+    plt.plot(states[:, 0], states[:, 1], color = "cornflowerblue",label='Trajectory')
+    
+    # plt.plot([x_ref[0], x_ref[0] + 1], [x_ref[1], x_ref[1] + 1], 'r--', label='Static Reference')
+    # plt.plot([x_ref[0], x_ref[0] - 1], [x_ref[1], x_ref[1] + 1], 'r--')
+    # dot = plt.Circle((x_ref[0], x_ref[1]), 0.01, color='r', fill=True)
+    # plt.gca().add_patch(dot)
+    body1 = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
+    circle1= plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2, color='#B7B6B6', linestyle='dotted' , fill=True)
+    circle_exterior1 = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle * 2 + r_chaser, color='#B7B6B6', linestyle='dotted' , fill=False)
+    plt.gca().add_patch(circle_exterior1)
+    plt.gca().add_patch(circle1)
+    plt.gca().add_patch(body1)
     plt.xlabel('x')
     plt.ylabel('y')
     plt.title('Trajectory')
@@ -368,11 +360,10 @@ def simulation_results_generation(output_folder):
     
 def animate_trajectory():
     fig, ax = plt.subplots(figsize=(8, 6))
-    time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
 
     # Initialize the spacecraft's trajectory plot and the square body plot
     trajectory, = ax.plot([], [], color = 'k', label='Trajectory') #darkblue
-    line1, = ax.plot([], [], color = "#D33E43" ,linestyle = 'dashed')
+    line1, = ax.plot([], [], color = "#D33E43" ,linestyle = 'dashed', label='Entry Angle Cone')
     line2, = ax.plot([], [], color = "#D33E43", linestyle = 'dashed')
     
     # Dummy vertices to initialize the Polygon
@@ -382,23 +373,25 @@ def animate_trajectory():
     dummy_states = np.zeros(2)
     dummy_target_center = np.zeros(2)
     inner_body_chaser = plt.Polygon(dummy_vertices, closed=True, color='#28536B', alpha=1, label='Chaser Agent') #darkgray #alpha1
-    outer_body_chaser = plt.Circle(dummy_states[0:2], radius= r_chaser, fill = True, color= 'grey',label = 'Chaser Agent') #k, 0.1
-    target_body = plt.Circle(dummy_target_center[0:2], radius=r_target, fill = True, color= '#942f2c', label = 'Target Agent') #k
+    outer_body_chaser = plt.Circle(dummy_states[0:2], radius= r_chaser, fill = True, color= '#7EA8BE', alpha = 0.3,label = 'Outer Cilinder') #k, 0.1
+    target_body = plt.Circle(dummy_target_center[0:2], radius=r_target, fill = True, color= 'Grey', alpha = 0.3, label = 'Target Agent') #k
     #chaser_probe, = ax.plot([],[], 'k-', label="Probe")
-    chaser_probe = plt.Polygon(dummy_probe, closed=True, color='k', alpha=1) #k 0.5
-    target_drogue = plt.Polygon(dummy_drogue, closed=True, color='k', alpha=1) #k 0.5
+    chaser_probe = plt.Polygon(dummy_probe, closed=True, color='k', alpha=0.5, label='Probe') #k 0.5
+    target_drogue = plt.Polygon(dummy_drogue, closed=True, color='k', alpha=1, label='Drogue') #k 0.5
     test_bed_patch = plt.Rectangle(test_bed[0,:2], 4.10, 3.32, fill=False, edgecolor='k', label='Test Bed') #k 0.5
     #circle = plt.Circle(x_ref_dyn_initial[0:2], radius = 2 * (r_chaser + r_target), fill = False, color = 'k')
-    arc = Arc(x_ref_dyn_initial[0:2], 2.25 * (r_chaser + r_target), 2.25 * (r_chaser + r_target), theta1=135.0, theta2=45.0)
-    
+    arc = Arc(x_ref_dyn_initial[0:2], 2 * (r_chaser + r_target), 2 * (r_chaser + r_target), theta1=135.0, theta2=45.0)
+    body1 = plt.Circle((x_obstacle[0], x_obstacle[1]), r_obstacle, color='#303030', fill=True)
 
-    #ax.add_patch(test_bed_patch)
 
-    
-    #ax.add_patch(inner_body_chaser)
+    plt.gca().add_patch(body1)
+
+    ax.add_patch(test_bed_patch)
+
+    ax.add_patch(target_drogue)
+    ax.add_patch(inner_body_chaser)
     ax.add_patch(outer_body_chaser)
     ax.add_patch(target_body)
-    ax.add_patch(target_drogue)
     
     ax.add_patch(chaser_probe)
     #ax.add_patch(circle)
@@ -407,13 +400,12 @@ def animate_trajectory():
     
     
     # Set plot limits
-    ax.set_xlim(0, 4)
-    ax.set_ylim(0, 4)
+    ax.set_xlim(-1, 5.10)
+    ax.set_ylim(-1, 4.32)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-    ax.set_title('Entry Cone Scenario')
+    ax.set_title('Spacecraft Trajectory and Body Animation')
     ax.grid(True, linewidth = 0.5)
-    ax.set_aspect('equal', adjustable='box')
     ax.legend()
 
     # Create two lines representing the entry angle cone
@@ -421,7 +413,7 @@ def animate_trajectory():
 
     def init():
         trajectory.set_data([], [])
-        #inner_body_chaser.set_xy(dummy_vertices)
+        inner_body_chaser.set_xy(dummy_vertices)
         outer_body_chaser.set_center((dummy_states[0], dummy_states[1]))
         target_body.set_center((dummy_target_center[0], dummy_target_center[1]))
         chaser_probe.set_xy(dummy_probe)
@@ -429,17 +421,16 @@ def animate_trajectory():
         #chaser_probe.set_data([], [])
         line1.set_data([], [])
         line2.set_data([], [])
-        time_text.set_text('')
-        return trajectory, time_text,inner_body_chaser, outer_body_chaser, chaser_probe, line1, line2, target_body, target_drogue
+    
+        return trajectory, inner_body_chaser, outer_body_chaser, chaser_probe, line1, line2, target_body, target_drogue
 
     def update(frame):
         # Update trajectory
         trajectory.set_data(states[:frame, 0], states[:frame, 1])
-        time_text.set_text(f'Time: {frame * dt_sim:.1f} s')
         # for t in range(num_steps):
         #     x_ref, x_target, x_docking = target_dynamics(t)
         
-        x_ref, x_target, x_docking = target_dynamics(frame)  # Extract reference position
+         # Extract reference position
         #print(x_ref, x_target, x_docking)
         # Compute the new vertices in the inertial frame for spacecraft body
         vertices_inertial = []
@@ -512,10 +503,10 @@ def animate_trajectory():
         # line1.set_data(x1, y_prime_rotated + x_ref[1])
         # line2.set_data(x1, y_prime_rotated + x_ref[1])
         
-        return trajectory, time_text, inner_body_chaser, outer_body_chaser, chaser_probe, line1, line2, target_body, target_drogue
+        return trajectory, inner_body_chaser, outer_body_chaser, chaser_probe, line1, line2, target_body, target_drogue
 
 
-    anim = FuncAnimation(fig, update, frames=np.arange(1, num_steps), init_func=init, blit=False, interval = 7)
+    anim = FuncAnimation(fig, update, frames=np.arange(1, num_steps), init_func=init, blit=True, interval = 5)
     
     if plt_show:
         plt.show()
@@ -539,4 +530,4 @@ def run():
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
     simulation_results_generation(output_folder)
-    #animate_trajectory()
+    animate_trajectory()
