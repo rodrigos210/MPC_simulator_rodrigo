@@ -1,4 +1,4 @@
-# MPC Rendez-vous Simulator
+# MPC Rendezvous and Contact Simulator
 
 **An entry-level MPC-based microgravity simulator**
 
