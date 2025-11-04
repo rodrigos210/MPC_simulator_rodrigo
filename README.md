@@ -48,7 +48,16 @@ pip install -r requirements.txt
 
 ##  Running a Scenario
 
-Scenarios can be launched using `run_simulator.py`. The interface will soon support command-line arguments, but for now, modify the script directly to choose:
+The scenarios can be launched in two different ways: either directly inside the scenario script (example 1) or by launching `run_simulator.py` (example 2). The interface will soon support command-line arguments, but for now, modify the script directly to choose:
+
+example 1:
+```bash
+python scenarios/obs_avoidance.py
+```
+example 2:
+```bash
+python run_simulator.py mpc_rhapsody
+```
 
 - The simulation dimensionality (`2D` or `3D`)
 - The desired scenario name
