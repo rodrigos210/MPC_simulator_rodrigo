@@ -34,7 +34,7 @@ MPC_simulator/
 
 ---
 
-## ⚙ Installation
+## Installation
 
 Make sure you have **Python 3.12.6** installed.
 
