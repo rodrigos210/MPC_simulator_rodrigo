@@ -18,7 +18,7 @@ start_time = time.time()
 plt_save = True # Save the plots
 plt_show = True # Show the plots
 
-static_reference = False
+static_reference = True
 
 # Constants
 mass = 1
@@ -32,9 +32,9 @@ u_max = 1
 dt_MPC = 1
 T_horizon = 12
 c_horizon = 4
-Q = np.diag([100, 100, 100, 100, 10, 100])   # State Weighting Matrix
-R = 1e-2 * np.eye(8)                     # Control weighting matrix
-P = np.diag([1000, 1000, 1000, 1000, 1000, 1000]) # Terminal Cost Weighting Matrix
+Q = np.diag([1, 1, 1, 1, 10, 1])   # State Weighting Matrix
+R = 100 * np.eye(8)                     # Control weighting matrix
+P = np.diag([10, 10, 10, 10, 100, 10]) # Terminal Cost Weighting Matrix
 MPC_freq = 1
 
 # Simulation parameters
@@ -43,7 +43,7 @@ dt_sim = 1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.array([0.5, 0, 0.5, 0, 0, 0]) # Initial state
 
-x_ref_static = np.array([4.0, 0, 2.0, 0, 0, 0]) # Reference state
+x_ref_static = np.array([4.0, 0, 2.0, 0, np.pi/4, 0]) # Reference state
 x_ref_dyn_initial = np.array([0.5, 0, 0.5, 0, 0, 0]) # Reference Trajectory Intial State
 
 # Storage for states and inputs
@@ -65,12 +65,12 @@ def target_dynamics(t):
 
         # Circular Motion
         # x_ref[0] += np.cos((np.pi/4)*t)
-        x_ref[0] += 0.1 * t
-        x_ref[2] += 0.1 * np.sin((np.pi/16)*t)
+        #x_ref[0] += 0.1 * t
+        #x_ref[2] += 0.1 * np.sin((np.pi/16)*t)
 
         # Decaying Eliptical Motion
-        # x_ref[0] += 2 * np.exp(-0.01 * t) * np.cos(0.1*t)
-        # x_ref[2] += 3 * np.exp(-0.01 * t) * np.sin(0.1*t) 
+        x_ref[0] += 2 * np.exp(-0.01 * t) * np.cos(0.1*t)
+        x_ref[2] += 3 * np.exp(-0.01 * t) * np.sin(0.1*t) 
     return x_ref
 
 def main():
@@ -141,7 +141,9 @@ def plots(output_folder):
     if plt_save:
         plt.savefig(os.path.join(output_folder, 'state_plot.pdf'), format='pdf')
 
-    # Create figure and axis
+    if plt.show:
+        plt_show
+
     fig, ax1 = plt.subplots()
 
     # Plot x and y on primary y-axis
@@ -166,7 +168,11 @@ def plots(output_folder):
     ax1.plot(time, states[:, 4], label='theta (radians)', color="#23ce6b")
 
     plt.title("State Evolution with Angle in Degrees")
-    plt.show()
+    if plt.show:
+        plt.show()
+
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'state_evol.pdf'), format='pdf')
 
     # #Plot inputs
     plt.figure(figsize=(12, 8))
@@ -189,8 +195,11 @@ def plots(output_folder):
 
     plt.tight_layout()
 
-    # if plt_save:
-    #     plt.savefig(os.path.join(output_folder, 'inputs_plot.pdf'), format='pdf')
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'inputs_plot.pdf'), format='pdf')
+    if plt_show:
+        plt.show()
+
 
     plt.figure(figsize=(12,6))
     plt.subplot(2, 1, 1)
@@ -220,22 +229,26 @@ def plots(output_folder):
     plt.tight_layout()
 
     # # Display the plot
-    # plt.show()
+    if plt_show:
+        plt.show()
 
-    # if plt_save:
-    #     plt.savefig(os.path.join(output_folder, 'inputs_total.pdf'), format='pdf')
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'inputs_total.pdf'), format='pdf')
 
-    # Plot cost history
-    # plt.figure(figsize=(12, 8))
-    # time_cost = np.linspace(0, simulation_time - dt_sim, len(cost_evolution))
-    # plt.plot(time_cost, cost_evolution, color='#5F758E')
-    # plt.xlabel('Time [s]')
-    # plt.ylabel('Cost')
-    # plt.title('Cost Evolution')
-    # plt.grid()
+    #Plot cost history
+    plt.figure(figsize=(12, 8))
+    time_cost = np.linspace(0, simulation_time - dt_sim, len(cost_evolution))
+    plt.plot(time_cost, cost_evolution, color='#5F758E')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Cost')
+    plt.title('Cost Evolution')
+    plt.grid()
 
-    # if plt_save:
-    #     plt.savefig(os.path.join(output_folder, 'cost_evolution_plot.pdf'), format='pdf')
+    if plt_save:
+        plt.savefig(os.path.join(output_folder, 'cost_evolution_plot.pdf'), format='pdf')
+
+    if plt_show: 
+        plt.show()
 
     # Plot trajectory
     
@@ -277,7 +290,8 @@ def plots(output_folder):
     if plt_save:
         plt.savefig(os.path.join(output_folder, 'rmse_plot.pdf'), format='pdf')
 
-    plt.show()
+    if plt.show:
+        plt.show()
 
     rmse_time = compute_rmse_over_time(states, x_ref_evolution)
 
@@ -292,7 +306,8 @@ def plots(output_folder):
     if plt_save:
         plt.savefig(os.path.join(output_folder, 'rmse_evolution_plot.pdf'), format='pdf')
 
-    plt.show()
+    if plt_show:
+        plt.show()
 
 # def animate_trajectory():
 #     fig, ax = plt.subplots(figsize=(8, 6))
@@ -405,6 +420,6 @@ if __name__ == "__main__":
     main()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
-    #plots(output_folder)
+    plots(output_folder)
     animate_trajectory()
 

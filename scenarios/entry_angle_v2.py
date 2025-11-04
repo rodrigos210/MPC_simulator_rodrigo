@@ -32,6 +32,7 @@ chaser_vector_C = np.array([1,0,0]) # Chaser Unity Direction Vector in the
 target_vector_T = np.array([0,-1,0]) # Target Unity Direction Vector in the N
 Ixx, Iyy = 1, 1
 Izz = 0.5 * mass * (r_chaser**2) # Approximated to a cylinder shape
+print(Izz)
 I = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]])
 
 # Test bed size coordinates

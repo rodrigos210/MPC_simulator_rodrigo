@@ -410,7 +410,7 @@ if __name__ == "__main__":
     simulation()
     print("Process finished --- %s seconds ---" % (time.time() - start_time))
     output_folder = output_directory_creation()
-    #simulation_results_generation(output_folder)
+    simulation_results_generation(output_folder)
     animate_trajectory()
 
 def run():

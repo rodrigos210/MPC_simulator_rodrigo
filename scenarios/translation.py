@@ -35,19 +35,19 @@ I = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]]) # Moment of Inertia Matrix
 
 # MPC Parameters
 dt_MPC = 1
-T_horizon = 15 # Prediction Horizon = T_horizon / dt_MPC
-c_horizon = 5 # Control Horizon
-Q = 1 * np.eye(13) # State Weighting Matrix
-Q[6:10,6:10] = 0 * 1e-1 * np.eye(4)
+T_horizon = 12 # Prediction Horizon = T_horizon / dt_MPC
+c_horizon = 2 # Control Horizon
+Q = 10 * np.eye(13) # State Weighting Matrix
+Q[6:10,6:10] = 1 * 1e-1 * np.eye(4)
 Q[10:13,10:13] = 0
-R = 100 * np.eye(8) # Control Weighting matrix
-P = 1e1 * np.eye(13) # Terminal Cost Weighting Matrix
-P[6:10,6:10] = 0 * 1e0 * np.eye(4)
+R = 1000 * np.eye(8) # Control Weighting matrix
+P = 100 * np.eye(13) # Terminal Cost Weighting Matrix
+P[6:10,6:10] = 1 * 1e0 * np.eye(4)
 P[10:13,10:13] = 0
 MPC_freq = 1
 
 # Simulation parameters
-simulation_time = 200  # Total simulation time in seconds
+simulation_time = 150  # Total simulation time in seconds
 dt_sim = 0.1  # Time step
 num_steps = int(simulation_time / dt_sim) # Number of simulation steps
 x0 = np.zeros(13) # Initial State Initialization
@@ -57,9 +57,9 @@ x0[10:13] = [0, 1e-16, 0]
 # Static Reference Scenario Parameters
 x_ref_static = np.zeros(13) 
 x_ref_static[0:2] = [3.5,3.5]
-x_ref_static[6:10] = euler_to_quaternion(0, 0, 0) # Yaw, Pitch = 0, Roll = 0
+x_ref_static[6:10] = euler_to_quaternion(0, 0, 45) # Yaw, Pitch = 0, Roll = 0
 #x_ref_static[6:10] = [0.707, 0, 0.0, 0.707]
-x_ref_static[10:13] = [0, 1e-8, 0]
+x_ref_static[10:13] = [0, 1e-16, 0]
 
 # Dynamic Reference Trajectory / Path Following Parameters
 x_ref_dyn_initial = np.zeros(13)
@@ -71,7 +71,7 @@ inputs = np.zeros((num_steps, 8))
 states_euler = np.zeros((num_steps + 1, 3))
 
 # Path Following Condition (True -> Static Reference Target, False -> Path Following Scenario)
-static_reference = False
+static_reference = True
 
 # Target x_ref definition
 def target_dynamics(t):
